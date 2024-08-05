@@ -527,7 +527,7 @@ fn print_enum(enum_def: &EnumDefinition, defined: &mut HashSet<Reference>, file:
         return Ok(())
     }
 
-    write!(file, "#[repr({})]\nenum {} {{\n", enum_def.kind, enum_def.name)?;
+    write!(file, "#[repr({})]\npub enum {} {{\n", enum_def.kind, enum_def.name)?;
 
     let max_value = enum_def.kind.max_val();
     let mut values = HashSet::new();
