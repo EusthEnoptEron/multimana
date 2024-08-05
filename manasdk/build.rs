@@ -422,14 +422,14 @@ fn print_fields(struct_def: &StructDefinition, lut: &ClassLookup, output: &mut i
 
     let parent = struct_def.parents.first();
     if let Some(parent) = parent {
-        let parent_obj = lut.get_struct(parent);
-
-        if let Some((parent_obj, _)) = parent_obj {
-            print_fields(parent_obj, lut, output, dependencies)?;
-            offset = parent_obj.struct_size;
-        } else {
-            write!(output, "    pub parent: {},\n", parent)?;
-        }
+        // let parent_obj = lut.get_struct(parent);
+        // if let Some((parent_obj, _)) = parent_obj {
+        //     print_fields(parent_obj, lut, output, dependencies)?;
+        //     offset = parent_obj.struct_size;
+        // } else {
+        write!(output, "    pub {}: {},\n", parent.to_snake_case(),  parent)?;
+        dependencies.insert(Reference::Struct(parent.clone()));
+        // }
     }
 
     let mut counter = struct_def.parents.len() * 100;
