@@ -1,3 +1,5 @@
+#![allow(non_camel_case_types)]
+
 use std::marker::PhantomData;
 
 include!(concat!(env!("OUT_DIR"), "/generated_code.rs"));

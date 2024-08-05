@@ -409,7 +409,7 @@ mod io {
     }
 
     #[derive(Debug, Eq, PartialEq)]
-    enum FieldKind {
+    pub enum FieldKind {
         Struct,
         Class,
         Primitive,
