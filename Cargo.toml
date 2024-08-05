@@ -3,10 +3,10 @@ name = "multimana"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+# see more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mana_sdk = { path = "mana_sdk" }
+manasdk = { path = "manasdk" }
 
 [workspace]
-members = ["mana_sdk", "manasdk"]
+members = ["manasdk"]
