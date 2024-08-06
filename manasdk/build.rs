@@ -527,7 +527,7 @@ fn print_enum(enum_def: &EnumDefinition, defined: &mut HashSet<Reference>, file:
         return Ok(());
     }
 
-    write!(file, "#[repr({})]\npub enum {} {{\n", enum_def.kind, enum_def.name)?;
+    write!(file, "#[repr({})]\n#[derive(Debug, Clone)]\npub enum {} {{\n", enum_def.kind, enum_def.name)?;
 
     let max_value = enum_def.kind.max_val();
     let mut values = HashSet::new();
@@ -552,7 +552,7 @@ fn print_struct(struct_data: &StructDefinition, defined: &mut HashSet<Reference>
         return Ok(());
     }
 
-    write!(output, "#[repr(C)]\npub struct {} {{\n", struct_data.name)?;
+    write!(output, "#[repr(C)]\n#[derive(Debug, Clone)]\npub struct {} {{\n", struct_data.name)?;
     print_fields(&struct_data, &lut, &mut output, &mut deps)?;
     write!(output, "}}\n\n")?;
     Ok(())
