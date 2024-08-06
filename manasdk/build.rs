@@ -139,6 +139,7 @@ mod io {
         pub name: String,
         pub kind: EnumKind,
         pub options: Vec<(String, u64)>,
+        pub package: Option<String>
     }
 
     impl EnumDump {
@@ -172,6 +173,7 @@ mod io {
                                 (option_name, option_value as u64)
                             }
                         }).collect(),
+                        package: None
                     }
                 }).collect()
             })
@@ -180,8 +182,8 @@ mod io {
 
 
     pub struct ClassLookup {
-        classes: HashMap<String, (StructDefinition, Option<String>)>,
-        enums: HashMap<String, (EnumDefinition, Option<String>)>,
+        classes: HashMap<String, StructDefinition>,
+        enums: HashMap<String, EnumDefinition>,
         manifest: Manifest,
         filter: Option<Regex>,
     }
@@ -198,12 +200,14 @@ mod io {
 
         pub fn add_struct_dump(&mut self, dump: StructDump) {
             self.classes.reserve(dump.data.len());
-            for item in dump.data {
+            for mut item in dump.data {
                 let package = self.manifest.structs.get(&item.name[1..])
                     .or_else(|| self.manifest.structs.get(&item.name))
                     .cloned();
-
-                if let Some(old_value) = self.classes.insert(item.name.clone(), (item, package.clone())) {
+                
+                item.package = package;
+                
+                if let Some(old_value) = self.classes.insert(item.name.clone(), item) {
                     panic!("Value clash {:?}", old_value);
                 }
             }
@@ -211,36 +215,39 @@ mod io {
 
         pub fn add_enum_dump(&mut self, dump: EnumDump) {
             self.enums.reserve(dump.data.len());
-            for item in dump.data {
+            for mut item in dump.data {
                 let package = self.manifest.structs.get(&item.name[1..])
                     .or_else(|| self.manifest.structs.get(&item.name))
                     .cloned();
-                if let Some(old_value) = self.enums.insert(item.name.clone(), (item, package)) {
+
+                item.package = package;
+                
+                if let Some(old_value) = self.enums.insert(item.name.clone(), item) {
                     panic!("Value clash {:?}", old_value);
                 }
             }
         }
 
-        pub fn get_struct(&self, name: &str) -> Option<&(StructDefinition, Option<String>)> {
+        pub fn get_struct(&self, name: &str) -> Option<&StructDefinition> {
             self.classes.get(name)
         }
 
-        pub fn get_enum(&self, name: &str) -> Option<&(EnumDefinition, Option<String>)> {
+        pub fn get_enum(&self, name: &str) -> Option<&EnumDefinition> {
             self.enums.get(name)
         }
 
-        pub fn iter_structs(&self) -> impl Iterator<Item=&(StructDefinition, Option<String>)> {
+        pub fn iter_structs(&self) -> impl Iterator<Item=&StructDefinition> {
             self.classes.values().filter(|&class| {
-                let package = class.1.as_ref().clone();
+                let package = class.package.as_ref();
                 if let Some(filter) = &self.filter {
                     package.is_none() || filter.is_match(package.unwrap().as_str())
                 } else { true }
             })
         }
 
-        pub fn iter_enums(&self) -> impl Iterator<Item=&(EnumDefinition, Option<String>)> {
+        pub fn iter_enums(&self) -> impl Iterator<Item=&EnumDefinition> {
             self.enums.values().filter(|&class| {
-                let package = class.1.as_ref().clone();
+                let package = class.package.as_ref();
                 if let Some(filter) = &self.filter {
                     package.is_none() || filter.is_match(package.unwrap().as_str())
                 } else { true }
@@ -269,6 +276,7 @@ mod io {
                         parents: vec![],
                         struct_size: 0,
                         fields: vec![],
+                        package: None
                     };
 
                     for (field_name, definition) in description.into_iter().flatten() {
@@ -314,6 +322,7 @@ mod io {
         pub parents: Vec<String>,
         pub struct_size: usize,
         pub fields: Vec<FieldDefinition>,
+        pub package: Option<String>
     }
 
     #[derive(Debug)]
@@ -430,7 +439,7 @@ fn print_fields(struct_def: &StructDefinition, lut: &ClassLookup, output: &mut i
         // } else {
         write!(output, "    pub {}: {},\n", parent.to_snake_case(), parent)?;
         dependencies.insert(Reference::Struct(parent.clone()));
-        if let Some((parent_obj,_)) = lut.get_struct(parent) {
+        if let Some(parent_obj) = lut.get_struct(parent) {
             offset = parent_obj.struct_size;
         } else {
             offset = struct_def.fields.first().map(|it| it.offset).unwrap_or_default();
@@ -516,11 +525,11 @@ mod tests {{
     let mut deps = HashSet::new();
     let mut defined = HashSet::new();
 
-    for (struct_data, _) in lut.iter_structs() {
+    for struct_data in lut.iter_structs() {
         print_struct(struct_data, &mut defined, &mut deps, &lut, &mut file, &mut tests)?;
     }
 
-    for (enum_def, _) in lut.iter_enums() {
+    for enum_def in lut.iter_enums() {
         print_enum(enum_def, &mut defined, &mut file)?;
     }
 
@@ -531,12 +540,12 @@ mod tests {{
         for reference in to_be_defined {
             match reference {
                 Reference::Struct(name) => {
-                    if let Some((obj, _)) = lut.get_struct(name.as_str()) {
+                    if let Some(obj) = lut.get_struct(name.as_str()) {
                         print_struct(obj, &mut defined, &mut deps, &lut, &mut file, &mut tests)?
                     }
                 }
                 Reference::Enum(name) => {
-                    if let Some((obj, _)) = lut.get_enum(name.as_str()) {
+                    if let Some(obj) = lut.get_enum(name.as_str()) {
                         print_enum(obj, &mut defined, &mut file)?
                     }
                 }
