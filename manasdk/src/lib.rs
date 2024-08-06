@@ -5,7 +5,7 @@ mod enums;
 use std::ffi::c_void;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
-use std::mem::ManuallyDrop;
+use std::mem::{align_of, ManuallyDrop, size_of};
 use widestring::WideChar;
 
 pub use enums::*;
@@ -46,12 +46,19 @@ impl<T> Debug for TSparseArrayElementOrFreeListLink<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "unknown")
     }
-} 
+}
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct InlineAllocator<const NUM_INLINE_ELEMENTS: usize, T> {
+    pub data: [T; NUM_INLINE_ELEMENTS],
+    pub secondary_data: *const T,
+}
 
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct FBitArray {
-    pub data: [u8; 4],
+    pub data: InlineAllocator<4, i32>,
     pub num_bits: i32,
     pub max_bits: i32,
 }
@@ -69,7 +76,7 @@ pub struct TSparseArray<T> {
 #[derive(Debug, Clone)]
 pub struct TSet<T> {
     pub elements: TSparseArray<T>,
-    pub hash: i32,
+    pub hash: InlineAllocator<1, i32>,
     pub hash_size: i32,
 }
 
@@ -196,20 +203,23 @@ pub struct FMulticastInlineDelegateProperty_ {
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct FDelegateProperty_ {}
+pub struct FDelegateProperty_ {
+    pub object: FWeakObjectPtr,
+    pub function_name: FName,
+}
 
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct TSoftObjectPtr<T> {
     _phantom: PhantomData<T>,
-    pub pointer: TLazyObjectPtr<FSoftObjectPath>
+    pub pointer: TLazyObjectPtr<FSoftObjectPath>,
 }
 
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct TSoftClassPtr<T> {
     _phantom: PhantomData<T>,
-    pub pointer: TLazyObjectPtr<FSoftObjectPath>
+    pub pointer: TLazyObjectPtr<FSoftObjectPath>,
 }
 
 
@@ -248,7 +258,7 @@ impl Clone for FFieldVariant {
                 ContainerType {
                     field: unsafe { self.container.field }
                 }
-            }
+            },
         }
     }
 }
@@ -377,5 +387,22 @@ pub struct TFieldPath<T> {
     _phantom: PhantomData<T>,
     pub resolved_field: *const FField,
     pub resolved_owner: TWeakObjectPtr<UStruct>,
-    pub path: TArray<FName>
+    pub path: TArray<FName>,
+}
+
+#[cfg(test)]
+mod collection_tests {
+    use std::mem::size_of;
+    use super::*;
+
+    #[test]
+    fn test_f_string() {}
+
+    #[test]
+    fn test_collections() {
+        assert_eq!(size_of::<TArray<i32>>(), 0x10, "TArray has a wrong size!");
+        assert_eq!(size_of::<TSet<i32>>(), 0x50, "TSet has a wrong size!");
+        assert_eq!(size_of::<TMap<i32, i32>>(), 0x50, "TMap has a wrong size!");
+        assert_eq!(size_of::<FText>(), 24, "FText has a wrong size!");
+    }
 }

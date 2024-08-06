@@ -2,7 +2,8 @@ use std::arch::x86_64::_mm_cmpestrc;
 use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufWriter, Write};
+use std::ptr::write;
 use heck::ToSnakeCase;
 use regex::Regex;
 use crate::io::{ClassLookup, EnumDefinition, EnumDump, Manifest, Reference, StructDefinition, StructDump};
@@ -30,7 +31,7 @@ mod io {
             InheritInfo(Vec<String>),
             MDKClassSize(usize),
             Field((FieldSignature, usize, usize, usize)),
-            FieldWithDefault((FieldSignature, usize, usize, usize, i64)),
+            FieldWithBitOffset((FieldSignature, usize, usize, usize, i64)),
         }
 
         #[derive(Deserialize, Debug)]
@@ -288,7 +289,7 @@ mod io {
                                     def.0.into(),
                                 ));
                             }
-                            raw::FieldDefinition::FieldWithDefault(def) => {
+                            raw::FieldDefinition::FieldWithBitOffset(def) => {
                                 result.fields.push(FieldDefinition::new(
                                     field_name,
                                     def.1,
@@ -320,14 +321,14 @@ mod io {
         pub name: String,
         pub offset: usize,
         pub size: usize,
-        pub default: Option<i64>,
+        pub bit_offset: Option<i64>,
         pub unknown: usize,
         pub signature: TypeSignature,
     }
 
     impl FieldDefinition {
-        pub fn new(name: String, offset: usize, size: usize, unknown: usize, default: Option<i64>, signature: TypeSignature) -> Self {
-            Self { name, offset, size, default, unknown, signature }
+        pub fn new(name: String, offset: usize, size: usize, unknown: usize, bit_offset: Option<i64>, signature: TypeSignature) -> Self {
+            Self { name, offset, size, bit_offset, unknown, signature }
         }
     }
 
@@ -429,17 +430,33 @@ fn print_fields(struct_def: &StructDefinition, lut: &ClassLookup, output: &mut i
         // } else {
         write!(output, "    pub {}: {},\n", parent.to_snake_case(), parent)?;
         dependencies.insert(Reference::Struct(parent.clone()));
+        if let Some((parent_obj,_)) = lut.get_struct(parent) {
+            offset = parent_obj.struct_size;
+        } else {
+            offset = struct_def.fields.first().map(|it| it.offset).unwrap_or_default();
+        }
+
         // }
     }
 
     let mut counter = struct_def.parents.len() * 100;
 
     for field in struct_def.fields.iter() {
+        if offset > field.offset {
+            // Padding issue
+            continue;
+        }
+        
         if offset < field.offset {
             write!(output, "    pub _padding_{}: [u8;{}],\n", counter, field.offset - offset)?;
             counter += 1;
 
             offset = field.offset;
+        }
+
+        if field.bit_offset.is_some() {
+            // Not implemented
+            continue;
         }
 
         let field_name = field.name.to_snake_case();
@@ -485,12 +502,22 @@ pub fn generate_code(structs_path: &str, classes_path: &str, enums_path: &str, g
     lut.add_struct_dump(structs_dump);
     lut.add_enum_dump(enums_dump);
 
+    let mut tests = BufWriter::new(Vec::new());
+
+    writeln!(tests, "
+#[cfg(test)]
+mod tests {{
+    #![allow(non_snake_case)]
+   use std::mem::size_of;
+   use super::*;
+")?;
+
     let mut file = std::fs::File::create(output_path)?;
     let mut deps = HashSet::new();
     let mut defined = HashSet::new();
 
     for (struct_data, _) in lut.iter_structs() {
-        print_struct(struct_data, &mut defined, &mut deps, &lut, &mut file)?;
+        print_struct(struct_data, &mut defined, &mut deps, &lut, &mut file, &mut tests)?;
     }
 
     for (enum_def, _) in lut.iter_enums() {
@@ -505,7 +532,7 @@ pub fn generate_code(structs_path: &str, classes_path: &str, enums_path: &str, g
             match reference {
                 Reference::Struct(name) => {
                     if let Some((obj, _)) = lut.get_struct(name.as_str()) {
-                        print_struct(obj, &mut defined, &mut deps, &lut, &mut file)?
+                        print_struct(obj, &mut defined, &mut deps, &lut, &mut file, &mut tests)?
                     }
                 }
                 Reference::Enum(name) => {
@@ -518,6 +545,12 @@ pub fn generate_code(structs_path: &str, classes_path: &str, enums_path: &str, g
 
         to_be_defined = deps.difference(&defined).cloned().collect();
     }
+
+
+    writeln!(tests, "\n}}")?;
+    tests.flush()?;
+
+    file.write_all(tests.get_ref())?;
 
     Ok(())
 }
@@ -544,10 +577,11 @@ fn print_enum(enum_def: &EnumDefinition, defined: &mut HashSet<Reference>, file:
     }
 
     write!(file, "}}\n\n")?;
+
     Ok(())
 }
 
-fn print_struct(struct_data: &StructDefinition, defined: &mut HashSet<Reference>, mut deps: &mut HashSet<Reference>, lut: &ClassLookup, mut output: &mut impl Write) -> std::io::Result<()> {
+fn print_struct(struct_data: &StructDefinition, defined: &mut HashSet<Reference>, mut deps: &mut HashSet<Reference>, lut: &ClassLookup, mut output: &mut impl Write, mut tests: &mut impl Write) -> std::io::Result<()> {
     if !defined.insert(Reference::Struct(struct_data.name.clone())) {
         return Ok(());
     }
@@ -555,6 +589,16 @@ fn print_struct(struct_data: &StructDefinition, defined: &mut HashSet<Reference>
     write!(output, "#[repr(C)]\n#[derive(Debug, Clone)]\npub struct {} {{\n", struct_data.name)?;
     print_fields(&struct_data, &lut, &mut output, &mut deps)?;
     write!(output, "}}\n\n")?;
+
+
+    writeln!(tests, "
+        #[test]
+        fn test_{}() {{
+            assert_eq!(size_of::<{}>(), {});
+        }}
+        ", struct_data.name, struct_data.name, struct_data.struct_size
+    )?;
+
     Ok(())
 }
 
