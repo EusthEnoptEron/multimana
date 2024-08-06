@@ -341,7 +341,6 @@ mod io {
 
     impl TypeSignature {
         pub(crate) fn fill_types(&self, target: &mut HashSet<Reference>) {
-
             match self.kind {
                 FieldKind::Struct | FieldKind::Class => {
                     target.insert(Reference::Struct(self.name.clone()));
@@ -359,7 +358,7 @@ mod io {
     }
 
     impl TypeSignature {
-        pub fn to_rust_signature(&self) -> String {
+        pub fn to_rust_signature(&self, property_name: Option<&str>) -> String {
             let field_type_name = match self.name.as_str() {
                 "float" => "f32".to_string(),
                 "double" => "f64".to_string(),
@@ -370,6 +369,7 @@ mod io {
                 "uint64" => "u64".to_string(),
                 "uint32" => "u32".to_string(),
                 "uint16" => "u16".to_string(),
+                "uint8" if { property_name.is_some_and(|it| it.starts_with("b_")) } => "bool".to_string(),
                 "uint8" => "u8".to_string(),
                 "bool" => "bool".to_string(),
                 _ => self.name.clone().replace(":", "_"), // handle other types as needed
@@ -379,7 +379,7 @@ mod io {
                 format!("{}{}", self.keyword, field_type_name)
             } else {
                 format!("{}{}<{}>", self.keyword, field_type_name, self.generics.iter()
-                    .map(|it| it.to_rust_signature())
+                    .map(|it| it.to_rust_signature(None))
                     .collect::<Vec<_>>()
                     .join(",")
                 )
@@ -427,7 +427,7 @@ fn print_fields(struct_def: &StructDefinition, lut: &ClassLookup, output: &mut i
         //     print_fields(parent_obj, lut, output, dependencies)?;
         //     offset = parent_obj.struct_size;
         // } else {
-        write!(output, "    pub {}: {},\n", parent.to_snake_case(),  parent)?;
+        write!(output, "    pub {}: {},\n", parent.to_snake_case(), parent)?;
         dependencies.insert(Reference::Struct(parent.clone()));
         // }
     }
@@ -464,7 +464,7 @@ fn print_fields(struct_def: &StructDefinition, lut: &ClassLookup, output: &mut i
 
         offset = offset + field.size;
         field.signature.fill_types(dependencies);
-        write!(output, "    pub {}: {},\n", field_name, field.signature.to_rust_signature())?;
+        write!(output, "    pub {}: {},\n", field_name, field.signature.to_rust_signature(Some(field_name.as_str())))?;
     }
 
     if offset < struct_def.struct_size {
@@ -515,7 +515,7 @@ pub fn generate_code(structs_path: &str, classes_path: &str, enums_path: &str, g
                 }
             }
         }
-        
+
         to_be_defined = deps.difference(&defined).cloned().collect();
     }
 
@@ -524,7 +524,7 @@ pub fn generate_code(structs_path: &str, classes_path: &str, enums_path: &str, g
 
 fn print_enum(enum_def: &EnumDefinition, defined: &mut HashSet<Reference>, file: &mut impl Write) -> std::io::Result<()> {
     if !defined.insert(Reference::Enum(enum_def.name.clone())) {
-        return Ok(())
+        return Ok(());
     }
 
     write!(file, "#[repr({})]\npub enum {} {{\n", enum_def.kind, enum_def.name)?;
@@ -535,7 +535,7 @@ fn print_enum(enum_def: &EnumDefinition, defined: &mut HashSet<Reference>, file:
         if !values.insert(*option_value) || *option_value > max_value {
             continue;
         }
-        
+
         let option_name = match option_name.as_str() {
             "Self" => "_Self",
             &_ => option_name.as_str()
@@ -549,7 +549,7 @@ fn print_enum(enum_def: &EnumDefinition, defined: &mut HashSet<Reference>, file:
 
 fn print_struct(struct_data: &StructDefinition, defined: &mut HashSet<Reference>, mut deps: &mut HashSet<Reference>, lut: &ClassLookup, mut output: &mut impl Write) -> std::io::Result<()> {
     if !defined.insert(Reference::Struct(struct_data.name.clone())) {
-        return Ok(())
+        return Ok(());
     }
 
     write!(output, "#[repr(C)]\npub struct {} {{\n", struct_data.name)?;
@@ -570,6 +570,6 @@ fn main() {
     let output_path = format!("{}/generated_code.rs", out_dir);
 
     generate_code(classes, structs, enums, gobjects, &output_path).expect("Failed to generate code");
-    
+
     println!("cargo:rerun-if-changed=build.rs");
 }
