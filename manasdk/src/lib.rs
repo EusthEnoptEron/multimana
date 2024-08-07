@@ -1,14 +1,16 @@
 #![allow(non_camel_case_types)]
 
 mod enums;
+mod functions;
 
 use std::ffi::c_void;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
-use std::mem::{align_of, ManuallyDrop, size_of};
+use std::mem::{ManuallyDrop, size_of};
 use widestring::WideChar;
 
 pub use enums::*;
+pub use functions::*;
 
 include!(concat!(env!("OUT_DIR"), "/generated_code.rs"));
 
@@ -389,6 +391,7 @@ pub struct TFieldPath<T> {
     pub resolved_owner: TWeakObjectPtr<UStruct>,
     pub path: TArray<FName>,
 }
+
 
 #[cfg(test)]
 mod collection_tests {
