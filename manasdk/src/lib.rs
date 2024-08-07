@@ -393,6 +393,20 @@ pub struct TFieldPath<T> {
 }
 
 
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct UClass {
+    pub u_struct: UStruct,
+    pub _padding_300: [u8; 384usize],
+}
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct UFunction {
+    pub u_struct: UStruct,
+    pub _padding_300: [u8; 48usize],
+}
+
 #[cfg(test)]
 mod collection_tests {
     use std::mem::size_of;
@@ -407,5 +421,14 @@ mod collection_tests {
         assert_eq!(size_of::<TSet<i32>>(), 0x50, "TSet has a wrong size!");
         assert_eq!(size_of::<TMap<i32, i32>>(), 0x50, "TMap has a wrong size!");
         assert_eq!(size_of::<FText>(), 24, "FText has a wrong size!");
+    }
+
+
+    #[test]
+    fn test_u_class() {
+        assert_eq!(size_of::<UClass>(), 560usize);
+    }
+    fn test_u_function() {
+        assert_eq!(size_of::<UFunction>(), 224usize);
     }
 }

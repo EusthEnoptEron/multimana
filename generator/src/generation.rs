@@ -13,7 +13,8 @@ use syn::{Ident, parse_str};
 use crate::{ClassLookup, EnumDefinition, EnumDump, EnumKind, FieldDefinition, FieldKind, Manifest, StructDefinition, StructDump, TypeSignature};
 
 trait ToRustCode {
-    fn get_package(&self) -> Option<String>;
+    fn name(&self) -> &str;
+    fn package(&self) -> Option<&str>;
     fn generate_code(&self, context: &ClassLookup) -> TokenStream;
     fn generate_test(&self, context: &ClassLookup) -> Option<TokenStream>;
 }
@@ -130,8 +131,12 @@ impl ToTokens for FieldDefinition {
 }
 
 impl ToRustCode for EnumDefinition {
-    fn get_package(&self) -> Option<String> {
-        self.package.clone()
+    fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    fn package(&self) -> Option<&str> {
+        self.package.as_ref().map(|it| it.as_str())
     }
 
     fn generate_code(&self, _context: &ClassLookup) -> TokenStream {
@@ -238,8 +243,12 @@ impl StructDefinition {
 }
 
 impl ToRustCode for StructDefinition {
-    fn get_package(&self) -> Option<String> {
-        self.package.clone()
+    fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    fn package(&self) -> Option<&str> {
+        self.package.as_ref().map(|it| it.as_str())
     }
 
     fn generate_code(&self, context: &ClassLookup) -> TokenStream {
@@ -270,7 +279,7 @@ impl ToRustCode for StructDefinition {
 }
 
 
-pub fn generate_code(structs_path: &str, classes_path: &str, enums_path: &str, gobjects: &str, output_path: &str) -> std::io::Result<()> {
+pub fn generate_code(structs_path: &str, classes_path: &str, enums_path: &str, gobjects: &str, output_path: &str, exclusions: &[&str]) -> std::io::Result<()> {
     let manifest: Manifest = std::io::read_to_string(File::open(gobjects)?)?.parse().unwrap();
     let structs_dump: StructDump = StructDump::from_raw_json(File::open(structs_path)?)?;
     let classes_dump: StructDump = StructDump::from_raw_json(File::open(classes_path)?)?;
@@ -282,7 +291,10 @@ pub fn generate_code(structs_path: &str, classes_path: &str, enums_path: &str, g
     lut.add_enum_dump(enums_dump);
 
 
-    let units = lut.iter_compilation_units().collect::<Vec<_>>();
+    let units = lut.iter_compilation_units()
+        .filter(|it| !exclusions.contains(&it.name()))
+        .collect::<Vec<_>>();
+    
     let code = units.iter().map(|it| it.generate_code(&lut));
     let tests = units.iter().filter_map(|it| it.generate_test(&lut));
 
