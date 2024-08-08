@@ -12,5 +12,5 @@ fn main() {
 
     generator::generate_code(classes, structs, enums, gobjects, &output_path, &exclusions).expect("Failed to generate code");
 
-    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo::rerun-if-changed=build.rs");
 }
