@@ -43,10 +43,20 @@ version = "0.1.0"
 dependencies = [
  "generator",
  "heck",
+ "manasdk-macros",
  "regex",
  "serde",
  "serde_json",
  "widestring",
+]
+
+[[package]]
+name = "manasdk-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.72",
 ]
 
 [[package]]

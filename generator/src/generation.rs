@@ -182,11 +182,7 @@ impl StructDefinition {
             } else {
                 offset = self.fields.first().map(|it| it.offset).unwrap_or_default();
             }
-
-            let name = format_ident!("{}", parent.to_snake_case());
-            let parent_type = format_ident!("{}", parent);
-
-            target.push(quote!(pub #name: #parent_type ));
+            // Parent is added through #extend attribute
         }
 
         let mut counter = self.parents.len() * 100;
@@ -255,8 +251,16 @@ impl ToRustCode for StructDefinition {
         let name = format_ident!("{}", self.name);
         let fields = self.resolve_fields(context);
 
+        let extend_statement = self.parents.first().map(|parent| {
+            let parent_ident = format_ident!("{}",  parent);
+            quote! {
+                #[extend(#parent_ident)]
+            }
+        });
+
         quote! {
             #[repr(C)]
+            #extend_statement
             #[derive(Debug, Clone)]
             pub struct #name {
                 #(#fields),*
@@ -294,7 +298,7 @@ pub fn generate_code(structs_path: &str, classes_path: &str, enums_path: &str, g
     let units = lut.iter_compilation_units()
         .filter(|it| !exclusions.contains(&it.name()))
         .collect::<Vec<_>>();
-    
+
     let code = units.iter().map(|it| it.generate_code(&lut));
     let tests = units.iter().filter_map(|it| it.generate_test(&lut));
 

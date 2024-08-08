@@ -8,7 +8,7 @@ fn main() {
     let gobjects = "dump/GObjects-Dump.txt";
 
     let output_path = format!("{}/generated_code.rs", out_dir);
-    let exclusions = vec!["UClass", "UFunction"];
+    let exclusions = vec!["UObject", "UClass", "UFunction", "UStruct", "UField"];
 
     generator::generate_code(classes, structs, enums, gobjects, &output_path, &exclusions).expect("Failed to generate code");
 

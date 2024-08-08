@@ -11,6 +11,7 @@ use widestring::WideChar;
 
 pub use enums::*;
 pub use functions::*;
+use manasdk_macros::extend;
 
 include!(concat!(env!("OUT_DIR"), "/generated_code.rs"));
 
@@ -283,9 +284,9 @@ pub struct FField {
 }
 
 #[repr(C)]
+#[extend(FField)]
 #[derive(Debug, Clone)]
 pub struct FProperty {
-    pub base: FField,
     pub array_dim: i32,
     pub element_size: i32,
     pub property_flags: u64,
@@ -295,16 +296,16 @@ pub struct FProperty {
 }
 
 #[repr(C)]
+#[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FByteProperty {
-    pub base: FProperty,
     pub enum_: *mut UEnum,
 }
 
 #[repr(C)]
+#[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FBoolProperty {
-    pub base: FProperty,
     pub field_size: u8,
     pub byte_offset: u8,
     pub byte_mask: u8,
@@ -312,74 +313,74 @@ pub struct FBoolProperty {
 }
 
 #[repr(C)]
+#[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FObjectPropertyBase {
-    pub base: FProperty,
     pub property_class: *mut UClass,
 }
 
 #[repr(C)]
+#[extend(FObjectPropertyBase)]
 #[derive(Debug, Clone)]
 pub struct FClassProperty {
-    pub base: FObjectPropertyBase,
     pub meta_class: *mut UClass,
 }
 
 #[repr(C)]
+#[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FStructProperty {
-    pub base: FProperty,
     pub struct_: *mut UStruct,
 }
 
 #[repr(C)]
+#[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FArrayProperty {
-    pub base: FProperty,
     pub inner_property: *mut FProperty,
 }
 
 #[repr(C)]
+#[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FDelegateProperty {
-    pub base: FProperty,
     pub signature_function: *mut UFunction,
 }
 
 #[repr(C)]
+#[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FMapProperty {
-    pub base: FProperty,
     pub key_property: *mut FProperty,
     pub value_property: *mut FProperty,
 }
 
 #[repr(C)]
+#[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FSetProperty {
-    pub base: FProperty,
     pub element_property: *mut FProperty,
 }
 
 #[repr(C)]
+#[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FEnumProperty {
-    pub base: FProperty,
     pub underlying_property: *mut FProperty,
     pub enum_: *mut UEnum,
 }
 
 #[repr(C)]
+#[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FFieldPathProperty {
-    pub base: FProperty,
     pub field_class: *mut FFieldClass,
 }
 
 #[repr(C)]
+#[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FOptionalProperty {
-    pub base: FProperty,
     pub value_property: *mut FProperty,
 }
 
@@ -392,18 +393,53 @@ pub struct TFieldPath<T> {
     pub path: TArray<FName>,
 }
 
-
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct UClass {
-    pub u_struct: UStruct,
-    pub _padding_300: [u8; 384usize],
+pub struct UObject {
+    pub v_table: *const c_void,
+    pub flags: EObjectFlags,
+    pub index: i32,
+    pub class: *mut UClass,
+    pub name: FName,
+    pub outer: *mut UObject
 }
 
 #[repr(C)]
+#[extend(UObject)]
+#[derive(Debug, Clone)]
+pub struct UField {
+    pub next: *const UField,
+}
+
+#[repr(C)]
+#[extend(UField)]
+#[derive(Debug, Clone)]
+pub struct UStruct {
+    pub _padding_200: [u8; 0x10],
+    pub super_: *const UStruct,
+    pub children: *const UField,
+    pub child_properties: *const FField,
+    pub size: i32,
+    pub min_alignment: i32,
+    pub _padding_201: [u8; 0x50],
+}
+
+#[repr(C)]
+#[extend(UStruct)]
+#[derive(Debug, Clone)]
+pub struct UClass {
+    pub _pad_1: [u8; 0x20],
+    pub cast_flags: EClassCastFlags,
+    pub _pad_2: [u8; 0x40],
+    pub default_object: *const UObject,
+    pub _pad_3: [u8; 0x110],
+}
+
+
+#[repr(C)]
+#[extend(UStruct)]
 #[derive(Debug, Clone)]
 pub struct UFunction {
-    pub u_struct: UStruct,
     pub _padding_300: [u8; 48usize],
 }
 
@@ -428,7 +464,14 @@ mod collection_tests {
     fn test_u_class() {
         assert_eq!(size_of::<UClass>(), 560usize);
     }
+    
+    #[test]
     fn test_u_function() {
         assert_eq!(size_of::<UFunction>(), 224usize);
+    }
+    
+    #[test]
+    fn test_inheritance() {
+        
     }
 }

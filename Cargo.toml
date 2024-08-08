@@ -9,4 +9,4 @@ edition = "2021"
 manasdk = { path = "manasdk" }
 
 [workspace]
-members = [ "generator","manasdk"]
+members = ["generator", "manasdk", "manasdk-macros"]
