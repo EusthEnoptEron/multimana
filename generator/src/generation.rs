@@ -103,7 +103,13 @@ impl ClassLookup {
 
 impl ToTokens for TypeSignature {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let name = format_ident!("{}", self.name);
+        let name_ident = format_ident!("{}", self.name);
+        let name = if self.kind == FieldKind::Enum && self.name.ends_with("Flags") {
+            quote!(::flagset::FlagSet<#name_ident>)  
+        } else {
+            quote!(#name_ident)
+        };
+        
         let keyword: TokenStream = parse_str(self.keyword.as_str()).unwrap_or_default();
 
         if self.generics.is_empty() {
@@ -156,11 +162,21 @@ impl ToRustCode for EnumDefinition {
         });
 
         let name = format_ident!("{}", self.name);
-        quote! {
-            #[repr(#data_type)]
-            #[derive(Debug, Clone)]
-            pub enum #name {
-                #(#options),*
+        if self.name.ends_with("Flags") {
+            quote! {
+                ::flagset::flags! {
+                    pub enum #name: #data_type {
+                        #(#options),*
+                    }
+                }
+            }
+        } else {
+            quote! {
+                #[repr(#data_type)]
+                #[derive(Debug, Clone, Copy)]
+                pub enum #name {
+                    #(#options),*
+                }
             }
         }
     }
@@ -339,7 +355,7 @@ mod tests {
     fn test_enum() {
         let def = EnumDefinition {
             kind: EnumKind::U16,
-            name: "MyTest".into(),
+            name: "MyTestFlags".into(),
             package: None,
             options: vec![
                 ("Option1".into(), 0),
@@ -352,11 +368,11 @@ mod tests {
         let tokens = def.generate_code(&lookup);
         let actual = PrettyPlease::default().format_tokens(tokens).unwrap();
         let expected = PrettyPlease::default().format_tokens(quote! {
-            #[repr(u16)]
-            #[derive(Debug, Clone)]
-            pub enum MyTest {
-                Option1 = 0u64,
-                Option2 = 1u64,
+            ::flagset::flags! {
+                pub enum MyTestFlags: u16 {
+                    Option1 = 0u16,
+                    Option2 = 1u16
+                }
             }
         }).unwrap();
 
@@ -371,8 +387,8 @@ mod tests {
             name: "MyTest".into(),
             parents: vec![],
             fields: vec![
-                FieldDefinition::new("field_1".into(), 0, 1, 1, None, TypeSignature::new_simple("uint8".into(), FieldKind::Primitive)),
-                FieldDefinition::new("field_2".into(), 8, 8, 1, None, TypeSignature::new_pointer("uint8".into(), FieldKind::Primitive)),
+                FieldDefinition::new("field_1".into(), 0, 1, 1, None, TypeSignature::new_simple("u8".into(), FieldKind::Primitive)),
+                FieldDefinition::new("field_2".into(), 8, 8, 1, None, TypeSignature::new_pointer("u8".into(), FieldKind::Primitive)),
             ],
         };
 

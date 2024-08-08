@@ -7,6 +7,7 @@ use std::ffi::c_void;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, size_of};
+use flagset::FlagSet;
 use widestring::WideChar;
 
 pub use enums::*;
@@ -232,7 +233,7 @@ pub struct FFieldClass {
     pub name: FName,
     pub id: u64,
     pub cast_flags: u64,
-    pub class_flags: EClassFlags,
+    pub class_flags: FlagSet<EClassFlags>,
     pub pad_1c: [u8; 4],
     pub superclass: *mut FFieldClass,
 }
@@ -397,7 +398,7 @@ pub struct TFieldPath<T> {
 #[derive(Debug, Clone)]
 pub struct UObject {
     pub v_table: *const c_void,
-    pub flags: EObjectFlags,
+    pub flags: FlagSet<EObjectFlags>,
     pub index: i32,
     pub class: *mut UClass,
     pub name: FName,
@@ -429,7 +430,7 @@ pub struct UStruct {
 #[derive(Debug, Clone)]
 pub struct UClass {
     pub _pad_1: [u8; 0x20],
-    pub cast_flags: EClassCastFlags,
+    pub cast_flags: FlagSet<EClassCastFlags>,
     pub _pad_2: [u8; 0x40],
     pub default_object: *const UObject,
     pub _pad_3: [u8; 0x110],
@@ -464,14 +465,14 @@ mod collection_tests {
     fn test_u_class() {
         assert_eq!(size_of::<UClass>(), 560usize);
     }
-    
+
     #[test]
     fn test_u_function() {
         assert_eq!(size_of::<UFunction>(), 224usize);
     }
-    
+
     #[test]
     fn test_inheritance() {
-        
+
     }
 }

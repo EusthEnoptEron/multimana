@@ -1,5 +1,5 @@
 use std::cell::{Cell, UnsafeCell};
-use manasdk::AACTPlayerController;
+use manasdk::{AACTPlayerController, UClass};
 
 struct Parent {
     pub property: f32
@@ -23,4 +23,5 @@ impl AsRef<Parent> for GrandChild {
 }
 
 fn main() {
+    
 }

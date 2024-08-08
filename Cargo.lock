@@ -12,6 +12,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "flagset"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3ea1ec5f8307826a5b71094dd91fc04d4ae75d5709b20ad351c7fb4815c86ec"
+
+[[package]]
 name = "generator"
 version = "0.1.0"
 dependencies = [
@@ -41,6 +47,7 @@ checksum = "49f1f14873335454500d59611f1cf4a4b0f786f9ac11f4312a78e4cf2566695b"
 name = "manasdk"
 version = "0.1.0"
 dependencies = [
+ "flagset",
  "generator",
  "heck",
  "manasdk-macros",
