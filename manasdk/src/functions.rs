@@ -126,7 +126,7 @@ impl FName {
 
         Some(string)
     }
-    
+
     pub fn to_string(&self) -> Option<String> {
         let output = self.to_raw_string()?;
         if let Some(pos) = output.rfind('/') {
@@ -172,7 +172,7 @@ impl UStruct {
 }
 
 impl UClass {
-    pub fn get_function(&self, class_name: &str, func_name: &str) -> Option<&UFunction> {
+    pub fn find_function(&self, class_name: &str, func_name: &str) -> Option<&UFunction> {
         self.iter_parents(true)
             .filter(|parent| parent.name() == class_name)
             .flat_map(|parent| parent.iter_children())
@@ -193,7 +193,7 @@ impl<'a, 'b, T, Delegate: Fn(&T) -> Option<&T>> Iterator for StructTraverser<'a,
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.current_el?;
         self.current_el = (self.delegate)(current);
-        
+
         Some(current)
     }
 }
