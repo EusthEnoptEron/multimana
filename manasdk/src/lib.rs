@@ -406,9 +406,9 @@ pub struct UObject {
     pub v_table: *const c_void,
     pub flags: FlagSet<EObjectFlags>,
     pub index: i32,
-    pub class: *mut UClass,
+    pub class: UObjectPointer<UClass>,
     pub name: FName,
-    pub outer: *mut UObject
+    pub outer: UObjectPointer<UObject>
 }
 
 impl AsRef<UObject> for UObject {

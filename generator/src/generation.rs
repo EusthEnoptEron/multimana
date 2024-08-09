@@ -1,5 +1,4 @@
 use std::collections::{HashSet, VecDeque};
-
 use std::fs::File;
 use std::io::{Write};
 
@@ -7,10 +6,10 @@ use heck::ToSnakeCase;
 use proc_macro2::{TokenStream};
 use quote::{format_ident, quote, TokenStreamExt, ToTokens};
 use regex::Regex;
-use rust_format::{Formatter, PrettyPlease};
 use syn::{Ident, parse_str};
 
 use crate::{ClassLookup, EnumDefinition, EnumDump, EnumKind, FieldDefinition, FieldKind, Manifest, StructDefinition, StructDump, TypeSignature};
+use crate::serialization::OffsetData;
 
 trait ToRustCode {
     fn name(&self) -> &str;
@@ -105,24 +104,24 @@ impl ToTokens for TypeSignature {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let name_ident = format_ident!("{}", self.name);
         let name = if self.kind == FieldKind::Enum && self.name.ends_with("Flags") {
-            quote!(::flagset::FlagSet<#name_ident>)  
+            quote!(::flagset::FlagSet<#name_ident>)
         } else {
             quote!(#name_ident)
         };
-        
+
         let typed_stream = if self.generics.is_empty() {
             quote!(#name)
         } else {
             let generics = &self.generics;
             quote!(#name <#(#generics),*>)
         };
-        
+
         let result = match self.is_pointer {
-            true if self.name.starts_with("U") => { quote! { UObjectPointer<#typed_stream> } },
-            true => { quote! { *mut #typed_stream }}
+            true if self.name.starts_with("U") => { quote! { UObjectPointer<#typed_stream> } }
+            true => { quote! { *mut #typed_stream } }
             false => { typed_stream }
         };
-        
+
         tokens.append_all(result);
     }
 }
@@ -300,11 +299,12 @@ impl ToRustCode for StructDefinition {
 }
 
 
-pub fn generate_code(structs_path: &str, classes_path: &str, enums_path: &str, gobjects: &str, output_path: &str, exclusions: &[&str]) -> std::io::Result<()> {
+pub fn generate_code(structs_path: &str, classes_path: &str, enums_path: &str, gobjects: &str, offsets_path: &str, exclusions: &[&str]) -> std::io::Result<TokenStream> {
     let manifest: Manifest = std::io::read_to_string(File::open(gobjects)?)?.parse().unwrap();
     let structs_dump: StructDump = StructDump::from_raw_json(File::open(structs_path)?)?;
     let classes_dump: StructDump = StructDump::from_raw_json(File::open(classes_path)?)?;
     let enums_dump: EnumDump = EnumDump::from_raw_json(File::open(enums_path)?)?;
+    let offsets: OffsetData = serde_json::from_reader(File::open(offsets_path)?)?;
 
     let mut lut = ClassLookup::new(manifest, Some(Regex::new(r"^X21$").unwrap()));
     lut.add_struct_dump(classes_dump);
@@ -318,6 +318,11 @@ pub fn generate_code(structs_path: &str, classes_path: &str, enums_path: &str, g
 
     let code = units.iter().map(|it| it.generate_code(&lut));
     let tests = units.iter().filter_map(|it| it.generate_test(&lut));
+    let offset_constants = offsets.data.iter().map(|offset| {
+        let ident = format_ident!("{}", offset.0);
+        let value = offset.1;
+        quote! {pub const #ident: usize = #value;}
+    });
 
     let definitions = quote! {
         #(#code)*
@@ -330,15 +335,13 @@ pub fn generate_code(structs_path: &str, classes_path: &str, enums_path: &str, g
 
             #(#tests)*
         }
+
+        mod Offsets {
+            #(#offset_constants)*
+        }
     };
 
-    let as_string = definitions.to_string();
-
-    let mut file = File::create(output_path)?;
-    let result = PrettyPlease::default().format_tokens(definitions).expect(as_string.as_str());
-    write!(file, "{}", result)?;
-
-    Ok(())
+    Ok(definitions)
 }
 
 

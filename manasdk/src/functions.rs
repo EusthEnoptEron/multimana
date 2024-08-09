@@ -1,5 +1,5 @@
 use flagset::FlagSet;
-use crate::{EClassCastFlags, UClass, UFunction, UObject, UObjectPointer, UStruct};
+use crate::{EClassCastFlags, Offsets, UClass, UFunction, UObject, UObjectPointer, UStruct};
 
 
 impl<T: AsRef<UObject>> UObjectPointer<T> {
@@ -20,15 +20,13 @@ impl UObject {
 }
 
 impl UObject {
-    fn has_type_flag(&self, flags: impl Into<FlagSet<EClassCastFlags>>) -> bool {
-        unsafe {
-            self.class.as_ref().map(|it| it.cast_flags.contains(flags)).unwrap_or_default()
-        }
+    pub fn has_type_flag(&self, flags: impl Into<FlagSet<EClassCastFlags>>) -> bool {
+        self.class.as_ref().map(|it| it.cast_flags.contains(flags)).unwrap_or_default()
     }
 }
 
 impl UClass {
-    fn get_function(&self, class_name: &str, func_name: &str) -> Option<&UFunction> {
+    pub fn get_function(&self, class_name: &str, func_name: &str) -> Option<&UFunction> {
         let mut clss: Option<&UStruct> = Some(self);
 
         while let Some(current) = clss {
@@ -46,8 +44,7 @@ impl UClass {
                 child = child_.next.as_ref();
             }
         }
-
-
+        
         None
     }
 }

@@ -52,6 +52,7 @@ dependencies = [
  "heck",
  "manasdk-macros",
  "regex",
+ "rust-format",
  "serde",
  "serde_json",
  "widestring",

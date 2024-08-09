@@ -39,7 +39,19 @@ struct MDKClassSize {
 #[derive(Deserialize, Debug)]
 pub struct JsonData {
     pub data: Vec<HashMap<String, Vec<HashMap<String, FieldDefinition>>>>,
+    pub updated_at: String
 }
+
+#[derive(Deserialize, Debug, Eq, PartialEq)]
+pub struct OffsetData {
+    pub data: Vec<Offset>,
+}
+
+#[derive(Deserialize, Debug, Eq, PartialEq)]
+pub struct Offset(
+    pub String,
+    pub usize,
+);
 
 
 impl EnumDump {
@@ -63,13 +75,13 @@ impl EnumDump {
                 let max_val = kind.max_val();
                 let mut taken = HashSet::new();
                 let mut options = vec![];
-                
+
                 for it in enum_def.0 {
                     let (mut option_name, option_value) = it.into_iter().nth(0).unwrap();
                     if option_name == "Self" {
-                      option_name = "Self_".to_string();  
+                        option_name = "Self_".to_string();
                     }
-                    
+
                     let option = if option_value < 0 {
                         Some((option_name, max_val))
                     } else if option_value <= max_val as i64 {
@@ -77,10 +89,10 @@ impl EnumDump {
                     } else {
                         None
                     };
-                    
+
                     if let Some(option) = option {
                         if taken.insert(option.1) {
-                           options.push(option); 
+                            options.push(option);
                         }
                     }
                 }
@@ -89,7 +101,7 @@ impl EnumDump {
                     name: enum_name.replace(":", "_"),
                     kind,
                     options,
-                    package: None
+                    package: None,
                 }
             }).collect()
         })
@@ -112,7 +124,7 @@ impl StructDump {
                     parents: vec![],
                     struct_size: 0,
                     fields: vec![],
-                    package: None
+                    package: None,
                 };
 
                 for (field_name, definition) in description.into_iter().flatten() {
@@ -156,7 +168,7 @@ impl StructDump {
 impl From<FieldSignature> for TypeSignature {
     fn from(value: FieldSignature) -> Self {
         Self {
-            name:  match value.0.as_str() {
+            name: match value.0.as_str() {
                 "float" => "f32".to_string(),
                 "double" => "f64".to_string(),
                 "int64" => "i64".to_string(),
@@ -184,5 +196,25 @@ impl From<FieldSignature> for TypeSignature {
             },
             generics: value.3.into_iter().map(|it| it.into()).collect(),
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_offsets() {
+        let result: OffsetData = serde_json::from_str(r#"{   
+            "credit": {
+                "dumper_link": "https://github.com/Encryqed/Dumper-7",
+                "dumper_used": "Dumper-7"
+            },
+            "data": [["key", 0]]}"#).unwrap();
+        
+        assert_eq!(result, OffsetData {
+            data: vec![Offset("key".to_string(), 0)]
+        });
     }
 }
