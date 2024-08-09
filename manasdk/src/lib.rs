@@ -7,6 +7,8 @@ use std::ffi::c_void;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, size_of};
+use std::os::raw::c_char;
+use bitfield::bitfield;
 use flagset::FlagSet;
 use widestring::WideChar;
 
@@ -22,6 +24,13 @@ include!(concat!(env!("OUT_DIR"), "/generated_code.rs"));
 pub struct UObjectPointer<T: AsRef<UObject>>(
     *mut T
 );
+
+struct FNamePool {
+    _padding: [u8; 8],
+    current_block: u32,
+    current_byte_cursor: u32,
+    blocks: [usize; 0x2000]
+}
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -135,13 +144,26 @@ pub struct TUObjectArray {
 #[derive(Debug, Clone)]
 pub struct FNumberedData {}
 
-#[repr(C)]
-#[derive(Debug, Clone)]
-pub struct FNameEntryHeader {}
+bitfield! {
+    pub struct FNameEntryHeader(u16);
+    impl Debug;
+    pub b_is_wide, _: 0, 0;
+    _reserved, _ : 5, 1; // 5 bits reserved (padding)
+    pub len, _: 15, 6;
+}
 
 #[repr(C)]
-#[derive(Debug, Clone)]
-pub struct FNameEntry {}
+pub union FStringData
+{
+    pub ansi_name: [u8; 0x400],
+    pub wide_name: [WideChar; 0x400]
+}
+
+#[repr(C)]
+pub struct FNameEntry {
+    pub header: FNameEntryHeader,
+    pub name: FStringData
+}
 
 #[repr(C)]
 #[derive(Debug, Clone)]
