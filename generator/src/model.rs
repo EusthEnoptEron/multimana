@@ -196,7 +196,7 @@ impl FieldDefinition {
 pub struct TypeSignature {
     pub name: String,
     pub kind: FieldKind,
-    pub keyword: String,
+    pub is_pointer: bool,
     pub generics: Vec<TypeSignature>,
 }
 
@@ -205,7 +205,7 @@ impl TypeSignature {
         Self {
             name,
             kind: FieldKind::Struct,
-            keyword: "".into(),
+            is_pointer: false,
             generics: vec![],
         }
     }
@@ -214,7 +214,7 @@ impl TypeSignature {
         Self {
             name,
             kind,
-            keyword: "".into(),
+            is_pointer: false,
             generics: vec![],
         }
     }
@@ -223,7 +223,7 @@ impl TypeSignature {
         Self {
             name,
             kind,
-            keyword: "*mut ".into(),
+            is_pointer: true,
             generics: vec![],
         }
     }

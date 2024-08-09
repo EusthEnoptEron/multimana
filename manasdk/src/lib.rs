@@ -17,6 +17,12 @@ use manasdk_macros::extend;
 include!(concat!(env!("OUT_DIR"), "/generated_code.rs"));
 
 
+/// Pointer to an UObject that might be null
+#[derive(Debug, Clone, Copy)]
+pub struct UObjectPointer<T: AsRef<UObject>>(
+    *mut T
+);
+
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct TArray<T> {
@@ -300,7 +306,7 @@ pub struct FProperty {
 #[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FByteProperty {
-    pub enum_: *mut UEnum,
+    pub enum_: UObjectPointer<UEnum>,
 }
 
 #[repr(C)]
@@ -317,21 +323,21 @@ pub struct FBoolProperty {
 #[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FObjectPropertyBase {
-    pub property_class: *mut UClass,
+    pub property_class: UObjectPointer<UClass>,
 }
 
 #[repr(C)]
 #[extend(FObjectPropertyBase)]
 #[derive(Debug, Clone)]
 pub struct FClassProperty {
-    pub meta_class: *mut UClass,
+    pub meta_class: UObjectPointer<UClass>,
 }
 
 #[repr(C)]
 #[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FStructProperty {
-    pub struct_: *mut UStruct,
+    pub struct_: UObjectPointer<UStruct>,
 }
 
 #[repr(C)]
@@ -345,7 +351,7 @@ pub struct FArrayProperty {
 #[extend(FProperty)]
 #[derive(Debug, Clone)]
 pub struct FDelegateProperty {
-    pub signature_function: *mut UFunction,
+    pub signature_function: UObjectPointer<UFunction>,
 }
 
 #[repr(C)]
@@ -405,11 +411,17 @@ pub struct UObject {
     pub outer: *mut UObject
 }
 
+impl AsRef<UObject> for UObject {
+    fn as_ref(&self) -> &UObject {
+        self
+    }
+}
+
 #[repr(C)]
 #[extend(UObject)]
 #[derive(Debug, Clone)]
 pub struct UField {
-    pub next: *const UField,
+    pub next: UObjectPointer<UField>,
 }
 
 #[repr(C)]
@@ -417,8 +429,8 @@ pub struct UField {
 #[derive(Debug, Clone)]
 pub struct UStruct {
     pub _padding_200: [u8; 0x10],
-    pub super_: *const UStruct,
-    pub children: *const UField,
+    pub super_: UObjectPointer<UStruct>,
+    pub children: UObjectPointer<UField>,
     pub child_properties: *const FField,
     pub size: i32,
     pub min_alignment: i32,
@@ -435,7 +447,6 @@ pub struct UClass {
     pub default_object: *const UObject,
     pub _pad_3: [u8; 0x110],
 }
-
 
 #[repr(C)]
 #[extend(UStruct)]

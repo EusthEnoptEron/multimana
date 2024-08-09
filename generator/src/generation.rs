@@ -110,19 +110,20 @@ impl ToTokens for TypeSignature {
             quote!(#name_ident)
         };
         
-        let keyword: TokenStream = parse_str(self.keyword.as_str()).unwrap_or_default();
-
-        if self.generics.is_empty() {
-            tokens.append_all(quote! {
-                #keyword #name
-            })
+        let typed_stream = if self.generics.is_empty() {
+            quote!(#name)
         } else {
             let generics = &self.generics;
-
-            tokens.append_all(quote! {
-                #keyword #name <#(#generics),*>
-            })
-        }
+            quote!(#name <#(#generics),*>)
+        };
+        
+        let result = match self.is_pointer {
+            true if self.name.starts_with("U") => { quote! { UObjectPointer<#typed_stream> } },
+            true => { quote! { *mut #typed_stream }}
+            false => { typed_stream }
+        };
+        
+        tokens.append_all(result);
     }
 }
 

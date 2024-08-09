@@ -177,9 +177,9 @@ impl From<FieldSignature> for TypeSignature {
                 "D" => FieldKind::Primitive,
                 _ => panic!("Unknown data type: {}", value.1)
             },
-            keyword: match value.2.as_str() {
-                "*" => "*mut ".to_string(),
-                "" => "".to_string(),
+            is_pointer: match value.2.as_str() {
+                "*" => true,
+                "" => false,
                 _ => panic!("Unknown keyword: {}", value.2)
             },
             generics: value.3.into_iter().map(|it| it.into()).collect(),
