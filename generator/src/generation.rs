@@ -1,7 +1,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::fs::File;
 use std::io::{Write};
-
+use std::path::Path;
 use heck::ToSnakeCase;
 use proc_macro2::{TokenStream};
 use quote::{format_ident, quote, TokenStreamExt, ToTokens};
@@ -116,8 +116,11 @@ impl ToTokens for TypeSignature {
             quote!(#name <#(#generics),*>)
         };
 
+        let is_uobject = self.name.starts_with(&['U', 'A']) && 
+            self.name[1..].chars().nth(0).filter(char::is_ascii_uppercase).is_some();
+
         let result = match self.is_pointer {
-            true if self.name.starts_with("U") => { quote! { UObjectPointer<#typed_stream> } }
+            true if is_uobject => { quote! { UObjectPointer<#typed_stream> } }
             true => { quote! { *mut #typed_stream } }
             false => { typed_stream }
         };
@@ -299,21 +302,21 @@ impl ToRustCode for StructDefinition {
 }
 
 
-pub fn generate_code(structs_path: &str, classes_path: &str, enums_path: &str, gobjects: &str, offsets_path: &str, exclusions: &[&str]) -> std::io::Result<TokenStream> {
-    let manifest: Manifest = std::io::read_to_string(File::open(gobjects)?)?.parse().unwrap();
-    let structs_dump: StructDump = StructDump::from_raw_json(File::open(structs_path)?)?;
-    let classes_dump: StructDump = StructDump::from_raw_json(File::open(classes_path)?)?;
-    let enums_dump: EnumDump = EnumDump::from_raw_json(File::open(enums_path)?)?;
-    let offsets: OffsetData = serde_json::from_reader(File::open(offsets_path)?)?;
+pub fn generate_code<P: AsRef<Path>>(base_path: P, excluded_types: &[&str], package_filter: Option<Regex>) -> std::io::Result<TokenStream> {
+    let manifest: Manifest = std::io::read_to_string(File::open(base_path.as_ref().join("GObjects-Dump.txt"))?)?.parse().unwrap();
+    let structs_dump: StructDump = StructDump::from_raw_json(File::open(base_path.as_ref().join("StructsInfo.json"))?)?;
+    let classes_dump: StructDump = StructDump::from_raw_json(File::open(base_path.as_ref().join("ClassesInfo.json"))?)?;
+    let enums_dump: EnumDump = EnumDump::from_raw_json(File::open(base_path.as_ref().join("EnumsInfo.json"))?)?;
+    let offsets: OffsetData = serde_json::from_reader(File::open(base_path.as_ref().join("OffsetsInfo.json"))?)?;
 
-    let mut lut = ClassLookup::new(manifest, Some(Regex::new(r"^X21$").unwrap()));
+    let mut lut = ClassLookup::new(manifest, package_filter);
     lut.add_struct_dump(classes_dump);
     lut.add_struct_dump(structs_dump);
     lut.add_enum_dump(enums_dump);
 
 
     let units = lut.iter_compilation_units()
-        .filter(|it| !exclusions.contains(&it.name()))
+        .filter(|it| !excluded_types.contains(&it.name()))
         .collect::<Vec<_>>();
 
     let code = units.iter().map(|it| it.generate_code(&lut));

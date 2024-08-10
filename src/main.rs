@@ -1,5 +1,5 @@
 use std::cell::{Cell, UnsafeCell};
-use manasdk::{AACTPlayerController, UClass};
+use manasdk::{UClass};
 
 struct Parent {
     pub property: f32
