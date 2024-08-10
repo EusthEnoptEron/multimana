@@ -1,6 +1,7 @@
 use std::ptr;
-
+use std::sync::OnceLock;
 use tracing::Level;
+use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{EnvFilter, fmt};
 use tracing_subscriber::fmt::format::FmtSpan;
@@ -12,6 +13,8 @@ use windows_sys::Win32::Foundation::{GENERIC_WRITE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{CreateFileA, OPEN_EXISTING};
 use windows_sys::Win32::System::Console::{AllocConsole, FreeConsole, GetConsoleWindow};
 use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOW};
+
+static WORKER_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
 pub fn open_console() {
     unsafe {
@@ -38,7 +41,10 @@ pub fn open_console() {
 
             // Initialize the tracing subscriber with both console and file logging
             let file_appender = RollingFileAppender::new(Rotation::NEVER, ".", "log_output.log");
+            let (non_blocking_file_appender, guard) = tracing_appender::non_blocking(file_appender);
 
+            let _ = WORKER_GUARD.set(guard);
+            
             let fmt_layer = fmt::layer()
                 .with_writer(std::io::stdout)
                 .with_ansi(enable_ansi)
@@ -47,7 +53,7 @@ pub fn open_console() {
                 .with_level(true);
 
             let file_layer = fmt::layer()
-                .with_writer(file_appender)
+                .with_writer(non_blocking_file_appender)
                 .with_ansi(false)
                 .with_timer(ChronoLocal::rfc_3339())
                 .with_span_events(FmtSpan::CLOSE)
@@ -61,6 +67,8 @@ pub fn open_console() {
                 .with(file_layer)
                 .with(env_filter)
                 .init();
+            
+            
         }
     }
 }
