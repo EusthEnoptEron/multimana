@@ -1,13 +1,10 @@
 use std::thread;
-use std::thread::{sleep, Thread};
-use std::time::Duration;
-use libmem::Address;
-use tracing::{error, info};
+
+use tracing::error;
 use windows_sys::Win32::Foundation::{BOOL, HINSTANCE};
 use windows_sys::Win32::System::SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH};
-use manasdk::UObject;
+
 use crate::console::open_console;
-use anyhow::{Context, Result};
 use crate::setup::setup;
 
 mod console;

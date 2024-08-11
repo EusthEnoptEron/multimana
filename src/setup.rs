@@ -7,7 +7,7 @@ use std::time::Duration;
 use anyhow::Context;
 use libmem::{Address, Trampoline};
 use tracing::info;
-use manasdk::{UClass, UObject};
+use manasdk::{UClass, UEngine, UGameplayStatics, UObject, UWorld};
 
 #[derive(Debug)]
 struct TrampolineWrapper<T>(Trampoline, PhantomData<T>);
@@ -33,11 +33,16 @@ impl<T> From<Trampoline> for TrampolineWrapper<T> {
 type TickFn = fn(this: *const c_void);
 static ORIGINAL_TICK: OnceLock<TrampolineWrapper<TickFn>> = OnceLock::new();
 fn tick(this: *const c_void) {
-    info!("Looking for classes...");
+    let world = UWorld::get_world();
+    if let Some(world) = world {
+        info!("World: {} ({:x?})", world.name(), world as *const UWorld);
 
-    for obj in UObject::all().iter() {
-        info!("{}", obj.full_name());
+        let player_controller = UGameplayStatics::get_player_controller(world, 0);
+        if let Some(controller) = player_controller.as_ref() {
+            info!("Controller: {}", controller.name());
+        }
     }
+
     if let Some(original_fn) = ORIGINAL_TICK.get() {
         original_fn.get()(this);
     }
@@ -60,21 +65,8 @@ pub fn setup() -> anyhow::Result<()> {
             module.size,
         ).context("Tick pointer not found")?
     };
-    
+
     ORIGINAL_TICK.set(unsafe { libmem::hook_code(tick_ptr, tick as Address).context("Unable to create tick hook") }?.into()).unwrap();
-
-    //
-    // info!("Looking for classes...");
-    //
-    // for obj in UObject::all().iter() {
-    //     info!("{}", obj.name());
-    // }
-
-    loop {
-        sleep(Duration::from_secs(1));
-        info!("A second passed.");
-    }
-
 
     Ok(())
 }

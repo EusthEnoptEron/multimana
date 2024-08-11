@@ -1,13 +1,16 @@
-use std::cell::LazyCell;
-use std::fmt::{Debug, Display};
+use std::ffi::c_void;
+use std::fmt::Display;
 use std::iter::once;
-use std::ops::Deref;
 use std::sync::LazyLock;
-use flagset::FlagSet;
-use serde::de::Expected;
-use tracing::{info, trace};
 
-use crate::{BASE_ADDRESS, EClassCastFlags, Offsets, TUObjectArray, UClass, UField, UFunction, UObject, UObjectPointer, UStruct};
+use dashmap::DashMap;
+use flagset::FlagSet;
+use crate::{BASE_ADDRESS, EClassCastFlags, EObjectFlags, Offsets, TUObjectArray, UClass, UField, UFunction, UObject, UObjectPointer, UStruct};
+
+thread_local! {
+    static CLASS_CACHE: DashMap<String, Option<&'static UClass>> = DashMap::new();
+}
+
 
 impl<T: AsRef<UObject>> UObjectPointer<T> {
     pub fn as_ref(&self) -> Option<&T> {
@@ -24,14 +27,17 @@ static UOBJECT: LazyLock<&'static TUObjectArray> = LazyLock::new(|| {
 });
 
 impl UObject {
-
     pub fn all() -> &'static TUObjectArray {
         &UOBJECT
     }
 
-    pub fn find_object(predicate: impl Fn(&UObject) -> bool, required_type: impl Into<FlagSet<EClassCastFlags>> + Copy) -> Option<&'static UObject> {
+    pub fn find_object(required_type: impl Into<FlagSet<EClassCastFlags>> + Copy, predicate: impl Fn(&UObject) -> bool) -> Option<&'static UObject> {
         Self::all().iter()
             .find(|it| it.has_type_flag(required_type) && predicate(it))
+    }
+
+    pub unsafe fn find_object_of_type<T>(required_type: impl Into<FlagSet<EClassCastFlags>> + Copy, predicate: impl Fn(&UObject) -> bool) -> Option<&'static T> {
+        Self::find_object(required_type, predicate).map(|it| std::mem::transmute(it))
     }
 
     pub fn name(&self) -> String {
@@ -49,7 +55,13 @@ impl UObject {
             "None".to_string()
         }
     }
+
+    pub fn is_a(&self, class: &UClass) -> bool {
+        self.class.as_ref().map(|it| it.is_subclass_of(class)).unwrap_or_default()
+    }
 }
+
+type ProcessEventFn = extern fn(*const UObject, *const UFunction, *mut c_void);
 
 impl UObject {
     pub fn has_type_flag(&self, flags: impl Into<FlagSet<EClassCastFlags>>) -> bool {
@@ -63,6 +75,27 @@ impl UObject {
                 el.outer.as_ref()
             },
         }
+    }
+
+    pub(crate) fn process_event<T>(&self, func: &UFunction, parms: &mut T) {
+        // Cast the v_table to a pointer to a pointer (vptr) to an array of function pointers (vtable).
+        let v_table = self.v_table as *const *const c_void;
+
+        // Safely obtain the function pointer from the vtable.
+        // v_table.add(Offsets::INDEX_PROCESSEVENT) returns a pointer to the function pointer, 
+        // so we dereference it to get the actual function pointer.
+        let fn_ptr = unsafe {
+            let process_event_ptr = *v_table.add(Offsets::INDEX_PROCESSEVENT);
+            std::mem::transmute::<*const c_void, ProcessEventFn>(process_event_ptr)
+        };
+
+        // Call the function using the function pointer.
+        let this = self;
+        fn_ptr(this, func, parms as *mut T as *mut c_void);
+    }
+
+    pub fn is_default_obj(&self) -> bool {
+        !self.flags.contains(EObjectFlags::ClassDefaultObject)
     }
 }
 
@@ -86,7 +119,12 @@ impl UStruct {
             },
         }
     }
+
+    pub fn is_subclass_of(&self, base: &UStruct) -> bool {
+        once(self).chain(self.iter_parents()).any(|it| std::ptr::eq(it, base))
+    }
 }
+
 
 impl UClass {
     pub fn find_function(&self, class_name: &str, func_name: &str) -> Option<&UFunction> {
@@ -97,7 +135,32 @@ impl UClass {
             .find(|child| child.name() == func_name)
             .map(|child| unsafe { std::mem::transmute(child) })
     }
+
+    pub fn find_function_mut(&self, class_name: &str, func_name: &str) -> Option<&mut UFunction> {
+        once::<&UStruct>(self).chain(self.iter_parents())
+            .filter(|parent| parent.name() == class_name)
+            .flat_map(|parent| parent.iter_children())
+            .filter(|child| child.has_type_flag(EClassCastFlags::Function))
+            .find(|child| child.name() == func_name)
+            .map(|child| unsafe { std::mem::transmute(child as *const UField) })
+    }
+
+
+    pub fn find(name: &str) -> Option<&'static UClass> {
+        CLASS_CACHE.with(|map| {
+            let class = map.entry(name.to_string()).or_insert_with(|| {
+                unsafe {
+                    UObject::find_object_of_type(EClassCastFlags::Class, |obj| {
+                        obj.name() == name
+                    })
+                }
+            });
+
+            *class.value()
+        })
+    }
 }
+
 
 struct StructTraverser<'a, 'b, T, Delegate: Fn(&T) -> Option<&T>> {
     current: Option<&'b T>,

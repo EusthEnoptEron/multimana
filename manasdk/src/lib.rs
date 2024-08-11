@@ -1,11 +1,13 @@
 #![allow(non_camel_case_types)]
 
-use std::cell::LazyCell;
+use std::cell::{Cell, LazyCell, OnceCell};
 use std::ffi::c_void;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::mem::size_of;
-use std::sync::LazyLock;
+use std::ops::{Add, Deref};
+use std::sync::{LazyLock, OnceLock};
+
 use bitfield::bitfield;
 use flagset::FlagSet;
 use tracing::info;
@@ -17,6 +19,8 @@ pub use fields::*;
 pub use functions::*;
 use manasdk_macros::extend;
 
+use crate::Offsets::OFFSET_GWORLD;
+
 mod enums;
 mod functions;
 mod collections;
@@ -27,15 +31,20 @@ include!(concat!(env!("OUT_DIR"), "/generated_code.rs"));
 
 static BASE_ADDRESS: LazyLock<usize> = LazyLock::new(|| {
     unsafe {
-        let handle  =windows_sys::Win32::System::LibraryLoader::GetModuleHandleA(std::ptr::null()) as usize;
+        let handle = windows_sys::Win32::System::LibraryLoader::GetModuleHandleA(std::ptr::null()) as usize;
         info!("Module handle: {} ({:x})", handle, handle);
-        
+
         handle
     }
 });
 
+fn resolve_offset<T>(offset: usize) -> *mut T {
+    (*BASE_ADDRESS + offset) as *mut T
+}
+
 
 /// Pointer to an UObject that might be null
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct UObjectPointer<T: AsRef<UObject>>(
     *mut T
@@ -64,13 +73,13 @@ bitfield! {
 pub union FStringData
 {
     pub ansi_name: [u8; 0x400],
-    pub wide_name: [WideChar; 0x400]
+    pub wide_name: [WideChar; 0x400],
 }
 
 #[repr(C)]
 pub struct FNameEntry {
     pub header: FNameEntryHeader,
-    pub name: FStringData
+    pub name: FStringData,
 }
 
 #[repr(C)]
@@ -166,12 +175,12 @@ pub struct TSoftClassPtr<T> {
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct UObject {
-    pub v_table: *const c_void,
+    pub v_table: *const usize,
     pub flags: FlagSet<EObjectFlags>,
     pub index: i32,
     pub class: UObjectPointer<UClass>,
     pub name: FName,
-    pub outer: UObjectPointer<UObject>
+    pub outer: UObjectPointer<UObject>,
 }
 
 impl AsRef<UObject> for UObject {
@@ -207,15 +216,105 @@ pub struct UClass {
     pub _pad_1: [u8; 0x20],
     pub cast_flags: FlagSet<EClassCastFlags>,
     pub _pad_2: [u8; 0x40],
-    pub default_object: *const UObject,
+    pub default_object: UObjectPointer<UObject>,
     pub _pad_3: [u8; 0x110],
 }
+
+
+pub type FNativeFuncPtr = fn(context: *const c_void, stack: *const c_void, result: *mut c_void);
 
 #[repr(C)]
 #[extend(UStruct)]
 #[derive(Debug, Clone)]
 pub struct UFunction {
-    pub _padding_300: [u8; 48usize],
+    pub function_flags: FlagSet<EFunctionFlags>,
+    pub _padding_300: [u8; 0x20usize],
+    pub exec_function: FNativeFuncPtr
+}
+
+
+impl UWorld {
+    pub fn get_world() -> Option<&'static UWorld> {
+        if Offsets::OFFSET_GWORLD != 0 {
+            unsafe {
+                resolve_offset::<*const UWorld>(OFFSET_GWORLD).as_ref()?.as_ref()
+            }
+        } else {
+            UEngine::get_engine()?.game_viewport.as_ref()?.world.as_ref()
+        }
+    }
+}
+
+impl UEngine {
+    pub fn class() -> &'static UClass {
+        UClass::find("Engine").unwrap()
+    }
+
+    pub fn get_engine() -> Option<&'static Self> {
+        thread_local! {
+            static CACHE: LazyCell<Option<&'static UEngine>> = LazyCell::new(|| {
+                let uengine = UEngine::class();
+
+                unsafe {
+                    UObject::find_object_of_type(EClassCastFlags::None, |it| {
+                        !it.is_default_obj() && it.is_a(uengine)
+                    })
+                }
+            });
+        }
+
+        CACHE.with(|it| it.deref().clone())
+    }
+}
+
+
+mod Params {
+    use crate::{APlayerController, UObject, UObjectPointer};
+
+    #[repr(C)]
+    #[derive(Debug, Clone)]
+    pub struct GameplayStatics_GetPlayerController {
+        pub world_context_obj: *const UObject,
+        pub player_index: i32,
+        pub _padding: [u8;4],
+        pub return_value: UObjectPointer<APlayerController>
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_size() {
+            assert_eq!(size_of::<GameplayStatics_GetPlayerController>(), 0x000018);
+            assert_eq!(align_of::<GameplayStatics_GetPlayerController>(), 0x00008);
+        }
+    }
+}
+
+impl UGameplayStatics {
+    pub fn get_player_controller(world_context_obj: &UObject, player_index: i32) -> UObjectPointer<APlayerController> {
+        let class = UClass::find("GameplayStatics")
+            .expect("Unable to find GameplayStatics");
+
+        let func = class
+            .find_function_mut("GameplayStatics", "GetPlayerController")
+            .expect("Unable to find GameplayStatics::GetPlayerController");
+
+        let mut parms = Params::GameplayStatics_GetPlayerController {
+            world_context_obj,
+            player_index,
+            _padding: Default::default(),
+            return_value: Default::default(),
+        };
+
+        let flags = func.function_flags;
+        func.function_flags |= EFunctionFlags::Native;
+        class.default_object.as_ref().expect("No default object").process_event(func, &mut parms);
+        func.function_flags = flags;
+
+        parms.return_value
+    }
 }
 
 #[cfg(test)]
@@ -247,7 +346,5 @@ mod collection_tests {
     }
 
     #[test]
-    fn test_inheritance() {
-
-    }
+    fn test_inheritance() {}
 }

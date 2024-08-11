@@ -9,7 +9,7 @@ fn main() {
     let output_path = format!("{}/generated_code.rs", out_dir);
     let exclusions = vec!["UObject", "UClass", "UFunction", "UStruct", "UField"];
 
-    let definitions = generator::generate_code("dump", &exclusions, Some(Regex::new(r#"CoreUObject"#).unwrap()))
+    let definitions = generator::generate_code("dump", &exclusions, Some(Regex::new(r#"CoreUObject|Engine"#).unwrap()))
         .expect("Failed to generate code");
 
     let result = PrettyPlease::default().format_tokens(definitions).expect("Failed to format code");

@@ -112,7 +112,7 @@ impl ClassLookup {
                 .cloned();
 
             item.package = package;
-
+            
             if let Some(old_value) = self.classes.insert(item.name.clone(), item) {
                 panic!("Value clash {:?}", old_value);
             }
@@ -145,6 +145,7 @@ impl ClassLookup {
     pub fn iter_structs(&self) -> impl Iterator<Item=&StructDefinition> {
         self.classes.values().filter(|&class| {
             let package = class.package.as_ref();
+            
             if let Some(filter) = &self.filter {
                 package.is_none() || filter.is_match(package.unwrap().as_str())
             } else { true }
