@@ -1,10 +1,13 @@
 use std::cell::LazyCell;
 use std::fmt::{Debug, Display};
 use std::iter::once;
+use std::ops::Deref;
+use std::sync::LazyLock;
 use flagset::FlagSet;
 use serde::de::Expected;
+use tracing::{info, trace};
 
-use crate::{EClassCastFlags, Offsets, TUObjectArray, UClass, UField, UFunction, UObject, UObjectPointer, UStruct};
+use crate::{BASE_ADDRESS, EClassCastFlags, Offsets, TUObjectArray, UClass, UField, UFunction, UObject, UObjectPointer, UStruct};
 
 impl<T: AsRef<UObject>> UObjectPointer<T> {
     pub fn as_ref(&self) -> Option<&T> {
@@ -16,14 +19,14 @@ impl<T: AsRef<UObject>> UObjectPointer<T> {
     }
 }
 
+static UOBJECT: LazyLock<&'static TUObjectArray> = LazyLock::new(|| {
+    unsafe { ((*BASE_ADDRESS + Offsets::OFFSET_GOBJECTS) as *const TUObjectArray).as_ref().expect("Unable to find GObjects") }
+});
 
 impl UObject {
-    const INSTANCE: LazyCell<&'static TUObjectArray> = LazyCell::new(|| {
-        unsafe { (Offsets::OFFSET_GOBJECTS as *const TUObjectArray).as_ref().expect("Unable to find GObjects") }
-    });
 
     pub fn all() -> &'static TUObjectArray {
-        &Self::INSTANCE
+        &UOBJECT
     }
 
     pub fn find_object(predicate: impl Fn(&UObject) -> bool, required_type: impl Into<FlagSet<EClassCastFlags>> + Copy) -> Option<&'static UObject> {
@@ -32,7 +35,7 @@ impl UObject {
     }
 
     pub fn name(&self) -> String {
-        self.name.to_string().unwrap_or_default()
+        self.name.to_string().unwrap_or("None".to_string())
     }
 
     /// Returns the name of this object in the format 'Class Package.Outer.Object'

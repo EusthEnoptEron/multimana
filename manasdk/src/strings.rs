@@ -1,4 +1,5 @@
 use std::ops::AddAssign;
+use tracing::info;
 use widestring::WideStr;
 use crate::{FName, FNameEntry, FNamePool};
 
@@ -78,7 +79,7 @@ impl FName {
     pub fn to_string(&self) -> Option<String> {
         let output = self.to_raw_string()?;
         if let Some(pos) = output.rfind('/') {
-            Some(output[0..pos].to_string())
+            Some(output[pos + 1..].to_string())
         } else {
             Some(output)
         }

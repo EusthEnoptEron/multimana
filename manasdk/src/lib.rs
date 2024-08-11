@@ -1,28 +1,38 @@
 #![allow(non_camel_case_types)]
 
+use std::cell::LazyCell;
+use std::ffi::c_void;
+use std::fmt::Debug;
+use std::marker::PhantomData;
+use std::mem::size_of;
+use std::sync::LazyLock;
+use bitfield::bitfield;
+use flagset::FlagSet;
+use tracing::info;
+use widestring::WideChar;
+
+pub use collections::*;
+pub use enums::*;
+pub use fields::*;
+pub use functions::*;
+use manasdk_macros::extend;
+
 mod enums;
 mod functions;
 mod collections;
 mod fields;
 mod strings;
 
-pub use collections::*;
-pub use fields::*;
-
-use std::ffi::c_void;
-use std::fmt::{Debug, Formatter};
-use std::marker::PhantomData;
-use std::mem::{ManuallyDrop, size_of};
-use std::os::raw::c_char;
-use bitfield::bitfield;
-use flagset::FlagSet;
-use widestring::WideChar;
-
-pub use enums::*;
-pub use functions::*;
-use manasdk_macros::extend;
-
 include!(concat!(env!("OUT_DIR"), "/generated_code.rs"));
+
+static BASE_ADDRESS: LazyLock<usize> = LazyLock::new(|| {
+    unsafe {
+        let handle  =windows_sys::Win32::System::LibraryLoader::GetModuleHandleA(std::ptr::null()) as usize;
+        info!("Module handle: {} ({:x})", handle, handle);
+        
+        handle
+    }
+});
 
 
 /// Pointer to an UObject that might be null
@@ -211,6 +221,7 @@ pub struct UFunction {
 #[cfg(test)]
 mod collection_tests {
     use std::mem::size_of;
+
     use super::*;
 
     #[test]

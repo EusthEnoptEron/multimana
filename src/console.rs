@@ -37,7 +37,7 @@ pub fn open_console() {
         );
 
         if handle != INVALID_HANDLE_VALUE {
-            let enable_ansi = nu_ansi_term::enable_ansi_support().is_ok();
+            let ansi_support_enabled = nu_ansi_term::enable_ansi_support().is_ok();
 
             // Initialize the tracing subscriber with both console and file logging
             let file_appender = RollingFileAppender::new(Rotation::NEVER, ".", "log_output.log");
@@ -47,7 +47,7 @@ pub fn open_console() {
             
             let fmt_layer = fmt::layer()
                 .with_writer(std::io::stdout)
-                .with_ansi(enable_ansi)
+                .with_ansi(ansi_support_enabled)
                 .with_timer(ChronoLocal::new("%H:%M:%S%.3f".into()))
                 .with_span_events(FmtSpan::CLOSE)
                 .with_level(true);

@@ -3,10 +3,13 @@ use std::collections::hash_set::IntoIter;
 use std::ffi::c_void;
 use std::fmt::{Debug, Formatter};
 use std::mem::ManuallyDrop;
-use std::ops;
-use std::ops::Deref;
-use crate::{FNameEntry, Offsets, UObject, UObjectPointer};
+use std::sync::LazyLock;
+use tracing::info;
 
+use crate::{BASE_ADDRESS, FNameEntry, Offsets, UObject, UObjectPointer};
+
+#[repr(C)]
+#[derive(Debug, Clone)]
 pub struct FNamePool {
     _padding: [u8; 8],
     current_block: u32,
@@ -121,18 +124,22 @@ pub struct TUObjectArray {
     /// Number of chunks we currently have
     pub num_chunks: i32,
 }
+unsafe impl Sync for TUObjectArray {}
 
+
+static FNAME_POOL: LazyLock<&'static FNamePool> = LazyLock::new(|| {
+    let address = *BASE_ADDRESS + Offsets::OFFSET_GNAMES;
+    info!("GNames Address=0x{:x}", address);
+    unsafe { (address as *const FNamePool).as_ref().expect("Unable to find GNames") }
+});
 
 impl FNamePool {
-    const INSTANCE: LazyCell<&'static FNamePool> = LazyCell::new(|| {
-        unsafe { (Offsets::OFFSET_GNAMES as *const FNamePool).as_ref().expect("Unable to find GNames") }
-    });
     const ENTRY_STRIDE: u32 = 0x0002;
     const BLOCK_OFFSET_BITS: u32 = 0x0010;
     const BLOCK_OFFSET: u32 = 1 << Self::BLOCK_OFFSET_BITS;
 
     pub fn get() -> &'static Self {
-        *Self::INSTANCE.deref()
+        &FNAME_POOL
     }
 
     pub fn is_valid_index(&self, index: u32, chunk_idx: u32, in_chunk_idx: u32) -> bool {
@@ -183,11 +190,11 @@ impl TUObjectArray {
 
         object.as_ref()
     }
-    
-    pub fn iter(&self) -> impl Iterator<Item = &UObject> {
+
+    pub fn iter(&self) -> impl Iterator<Item=&UObject> {
         TUObjectIter {
             index: 0,
-            array: self
+            array: self,
         }
     }
 }
@@ -195,22 +202,22 @@ impl TUObjectArray {
 
 struct TUObjectIter<'a> {
     index: usize,
-    array: &'a TUObjectArray
+    array: &'a TUObjectArray,
 }
 
 impl<'a> Iterator for TUObjectIter<'a> {
     type Item = &'a UObject;
-    
+
     fn next(&mut self) -> Option<Self::Item> {
         while self.index < self.array.len() {
             let current = self.index;
             self.index += 1;
-                 
+
             if let Some(pointer) = self.array.get_by_index(current) {
-                return Some(pointer)
+                return Some(pointer);
             }
         }
-        
+
         None
     }
 

@@ -1,12 +1,17 @@
 use std::thread;
 use std::thread::{sleep, Thread};
 use std::time::Duration;
-use tracing::info;
+use libmem::Address;
+use tracing::{error, info};
 use windows_sys::Win32::Foundation::{BOOL, HINSTANCE};
 use windows_sys::Win32::System::SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH};
+use manasdk::UObject;
 use crate::console::open_console;
+use anyhow::{Context, Result};
+use crate::setup::setup;
 
 mod console;
+mod setup;
 
 #[no_mangle]
 #[allow(non_snake_case)]
@@ -18,15 +23,17 @@ pub extern "system" fn DllMain(
     match fdw_reason {
         DLL_PROCESS_ATTACH => {
             thread::spawn(|| {
-                open_console(); // You can call the function to open a console here
+                let panics = std::panic::catch_unwind(|| {
+                    open_console(); // You can call the function to open a console here
 
-                info!("Attached!");
+                    if let Err(e) = setup() {
+                        error!("Error happened: {:?}", e);
+                    }
+                });
 
-                loop {
-                    sleep(Duration::from_secs(1));
-                    info!("A second passed.");
+                if let Err(something) = panics {
+                    error!("A fatal error occurred: {:?}", something);
                 }
-
             });
         }
         DLL_PROCESS_DETACH => {
