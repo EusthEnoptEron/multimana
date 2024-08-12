@@ -2,6 +2,7 @@ use std::collections::{HashSet, VecDeque};
 use std::fs::File;
 use std::io::{Write};
 use std::iter::once;
+use std::marker::PhantomData;
 use std::path::Path;
 use heck::ToSnakeCase;
 use proc_macro2::{Span, TokenStream};
@@ -140,7 +141,7 @@ impl TypeSignature {
                 let lifetime_token = lifetime.map(|it| {
                     syn::Lifetime::new(it.as_str(), Span::call_site())
                 });
-                
+
                 if mutable {
                     quote! { &#lifetime_token mut #typed_stream }
                 } else {
@@ -358,13 +359,14 @@ impl ToRustCode for StructDefinition {
 impl FunctionDefinition {
     fn to_tokens(&self, owner: &StructDefinition) -> TokenStream {
         let fn_id = format_ident!("{}", self.name.to_snake_case());
-        let has_out_param = self.flags.contains("HasOutParams");
 
         let return_value = if self.return_value.is_pointer || self.return_value.name != "void" {
             Some(&self.return_value)
         } else {
             None
         };
+
+        let has_out_param = self.flags.contains("HasOutParams");
         let is_static = self.flags.contains("Static");
 
         let this_arg = if !is_static {
@@ -388,30 +390,34 @@ impl FunctionDefinition {
             }
         }));
 
-        // Only the names for filling the struct
-        let signature_arg_names = self.arguments.iter().enumerate().map(|(index, it)| {
-            let id = as_identifier(it.name.as_str());
-            if has_out_param && index == self.arguments.len() - 1 {
-                quote!(unsafe { ::core::mem::transmute(#id) })
-            } else {
-                quote!(#id)
-            }
-        }).chain(return_value.map(|it| {
-            quote!(unsafe { ::std::mem::zeroed() })
-        })).chain(once(quote!{ std::default::Default::default() }));
-        
-        
+        // The arguments within the struct
         let struct_args = self.arguments.iter().enumerate().map(|(index, it)| {
             if has_out_param && index == self.arguments.len() - 1 {
-                let type_stream = it.type_.to_tokens_with(PointerHandling::Borrow { mutable: false, lifetime: Some("'a".into())});
-                quote!(&'a mut #type_stream)
+                let type_stream = it.type_.to_tokens_with(PointerHandling::Borrow { mutable: false, lifetime: Some("'b".into())});
+                quote!(#type_stream)
             } else {
                 let type_stream = it.type_.to_tokens_with(PointerHandling::Borrow { mutable: false, lifetime: Some("'a".into()) });
                 quote!(#type_stream)
             }
         }).chain(return_value.cloned().map(|it| quote!(#it)))
-        .chain(once(quote! { std::marker::PhantomData<&'a u8> }));
-        
+            .chain(once(quote! { std::marker::PhantomData<&'a u8> }))
+            .chain(once(quote! { std::marker::PhantomData<&'b u8> }));
+
+
+        // Only the names for filling the struct
+        let signature_arg_names = self.arguments.iter().enumerate().map(|(index, it)| {
+            let id = as_identifier(it.name.as_str());
+            if has_out_param && index == self.arguments.len() - 1 {
+                quote!(unsafe { ::core::mem::zeroed() })
+            } else {
+                quote!(#id)
+            }
+        }).chain(return_value.map(|it| {
+            quote!(unsafe { ::std::mem::zeroed() })
+        }))
+            .chain(once(quote!{ std::default::Default::default() }))
+            .chain(once(quote!{ std::default::Default::default() }));
+
         let class_name = &owner.name[1..];
         let fn_name = &self.name;
         let unable_to_find_class = format!("Unable to find {}", &owner.name[1..]);
@@ -452,11 +458,33 @@ impl FunctionDefinition {
             }
         };
 
+        let swap_out_into = if has_out_param {
+            let index: syn::Index = (self.arguments.len() - 1).into();
+            let arg: syn::Ident = as_identifier(self.arguments.last().unwrap().name.as_str());
+
+            Some(quote! {
+                std::mem::swap(&mut parms.#index, #arg);
+            })
+        } else {
+            None
+        };
+
+        let swap_out_back = if has_out_param {
+            let index: syn::Index = (self.arguments.len() - 1).into();
+            let arg: syn::Ident = as_identifier(self.arguments.last().unwrap().name.as_str());
+
+            Some(quote! {
+                std::mem::swap(#arg, &mut parms.#index);
+            })
+        } else {
+            None
+        };
+
         quote! {
             pub fn #fn_id(#(#signature_args),*) #return_type {
                 #[repr(C)]
                 #[derive(Debug)]
-                struct Args<'a>(#(#struct_args),*);
+                struct Args<'a,'b>(#(#struct_args),*);
 
                 let class = #class;
 
@@ -468,7 +496,11 @@ impl FunctionDefinition {
                     #(#signature_arg_names),*
                 );
 
+                #swap_out_into
+
                 #call_statement
+
+                #swap_out_back
 
                 #return_statement
             }

@@ -55,13 +55,12 @@ impl MultiplayerMod {
 
 
         info!("Creating array");
-        // let mut actors = TFixedSizeArray::<&AActor, 1000usize>::new();
-        let mut actors = TArray::<&AActor>::default();
+        let mut actors = TFixedSizeArray::<&AActor, 5000usize>::new();
+        //let mut actors = TArray::<&AActor>::default();
         info!("Gettings actors");
-        UGameplayStatics::get_all_actors_of_class(world, APawn::static_class().into(), &mut actors);
+        UGameplayStatics::get_all_actors_of_class(world, APawn::static_class().into(), actors.as_mut());
         
         info!("Actor count: {}", actors.len());
-        return Ok(());
         if let Some(actor) = actors.iter().find(|it| it.class.as_ref().unwrap().name() == "BP_P002_C") {
             second_player.possess(actor.cast().context("Unable to cast actor to pawn")?);
         } else {

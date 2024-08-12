@@ -32,7 +32,7 @@ include!(concat!(env!("OUT_DIR"), "/generated_code.rs"));
 pub trait HasClassObject {
     fn static_class() -> &'static UClass;
 }
- 
+
 static BASE_ADDRESS: LazyLock<usize> = LazyLock::new(|| {
     unsafe {
         let handle = windows_sys::Win32::System::LibraryLoader::GetModuleHandleA(std::ptr::null()) as usize;
