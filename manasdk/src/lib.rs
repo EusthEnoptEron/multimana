@@ -267,55 +267,55 @@ impl UEngine {
     }
 }
 
-
-mod Params {
-    use crate::{APlayerController, UObject, UObjectPointer};
-
-    #[repr(C)]
-    #[derive(Debug, Clone)]
-    pub struct GameplayStatics_GetPlayerController {
-        pub world_context_obj: *const UObject,
-        pub player_index: i32,
-        pub _padding: [u8;4],
-        pub return_value: UObjectPointer<APlayerController>
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn test_size() {
-            assert_eq!(size_of::<GameplayStatics_GetPlayerController>(), 0x000018);
-            assert_eq!(align_of::<GameplayStatics_GetPlayerController>(), 0x00008);
-        }
-    }
-}
-
-impl UGameplayStatics {
-    pub fn get_player_controller(world_context_obj: &UObject, player_index: i32) -> UObjectPointer<APlayerController> {
-        let class = UClass::find("GameplayStatics")
-            .expect("Unable to find GameplayStatics");
-
-        let func = class
-            .find_function_mut("GameplayStatics", "GetPlayerController")
-            .expect("Unable to find GameplayStatics::GetPlayerController");
-
-        let mut parms = Params::GameplayStatics_GetPlayerController {
-            world_context_obj,
-            player_index,
-            _padding: Default::default(),
-            return_value: Default::default(),
-        };
-
-        let flags = func.function_flags;
-        func.function_flags |= EFunctionFlags::Native;
-        class.default_object.as_ref().expect("No default object").process_event(func, &mut parms);
-        func.function_flags = flags;
-
-        parms.return_value
-    }
-}
+// 
+// mod Params {
+//     use crate::{APlayerController, UObject, UObjectPointer};
+// 
+//     #[repr(C)]
+//     #[derive(Debug, Clone)]
+//     pub struct GameplayStatics_GetPlayerController {
+//         pub world_context_obj: *const UObject,
+//         pub player_index: i32,
+//         pub return_value: UObjectPointer<APlayerController>
+//     }
+// 
+//     #[cfg(test)]
+//     mod tests {
+//         use std::mem::offset_of;
+//         use super::*;
+// 
+//         #[test]
+//         fn test_size() {
+//             assert_eq!(size_of::<GameplayStatics_GetPlayerController>(), 0x000018);
+//             assert_eq!(align_of::<GameplayStatics_GetPlayerController>(), 0x00008);
+//             assert_eq!(offset_of!(GameplayStatics_GetPlayerController, return_value), 0x000010);
+//         }
+//     }
+// }
+// 
+// impl UGameplayStatics {
+//     pub fn get_player_controller(world_context_obj: &UObject, player_index: i32) -> UObjectPointer<APlayerController> {
+//         let class = UClass::find("GameplayStatics")
+//             .expect("Unable to find GameplayStatics");
+// 
+//         let func = class
+//             .find_function_mut("GameplayStatics", "GetPlayerController")
+//             .expect("Unable to find GameplayStatics::GetPlayerController");
+// 
+//         let mut parms = Params::GameplayStatics_GetPlayerController {
+//             world_context_obj,
+//             player_index,
+//             return_value: Default::default(),
+//         };
+// 
+//         let flags = func.function_flags;
+//         func.function_flags |= EFunctionFlags::Native;
+//         class.default_object.as_ref().expect("No default object").process_event(func, &mut parms);
+//         func.function_flags = flags;
+// 
+//         parms.return_value
+//     }
+// }
 
 #[cfg(test)]
 mod collection_tests {

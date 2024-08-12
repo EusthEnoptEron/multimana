@@ -25,6 +25,16 @@ pub struct TArray<T> {
     pub max_elements: u32,
 }
 
+impl<T> Default for TArray<T> {
+    fn default() -> Self {
+        Self {
+            data: std::ptr::null(),
+            num_elements: 0,
+            max_elements: 0
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Clone)]
 /** The result of a sparse array allocation. */
@@ -33,6 +43,7 @@ pub struct FSparseArrayAllocationInfo
     pub index: i32,
     pub pointer: *const c_void,
 }
+
 
 #[repr(C)]
 pub union TSparseArrayElementOrFreeListLink<T> {

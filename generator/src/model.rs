@@ -43,6 +43,11 @@ pub struct EnumDump {
 }
 
 #[derive(Clone, Debug)]
+pub struct FunctionDump {
+    pub data: HashMap<String, Vec<FunctionDefinition>>
+}
+
+#[derive(Clone, Debug)]
 pub enum EnumKind {
     U8,
     U16,
@@ -119,6 +124,14 @@ impl ClassLookup {
         }
     }
 
+    pub fn add_function_dump(&mut self, dump: FunctionDump) {
+        for (class, functions) in dump.data {
+            self.classes.entry(class).and_modify(|class| {
+                class.functions = functions;
+            });
+        }
+    }
+
     pub fn add_enum_dump(&mut self, dump: EnumDump) {
         self.enums.reserve(dump.data.len());
         for mut item in dump.data {
@@ -175,6 +188,7 @@ pub struct StructDefinition {
     pub struct_size: usize,
     pub fields: Vec<FieldDefinition>,
     pub package: Option<String>,
+    pub functions: Vec<FunctionDefinition>
 }
 
 #[derive(Clone, Debug)]
@@ -185,6 +199,20 @@ pub struct FieldDefinition {
     pub bit_offset: Option<i64>,
     pub unknown: usize,
     pub signature: TypeSignature,
+}
+
+#[derive(Clone, Debug)]
+pub struct FunctionDefinition {
+    pub name: String,
+    pub return_value: TypeSignature,
+    pub arguments: Vec<ArgumentDefinition>,
+    pub flags: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ArgumentDefinition {
+    pub name: String,
+    pub type_: TypeSignature
 }
 
 impl FieldDefinition {

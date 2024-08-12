@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use serde::Deserialize;
-use crate::{EnumDefinition, EnumDump, EnumKind, FieldKind, StructDefinition, StructDump, TypeSignature};
+use crate::{ArgumentDefinition, EnumDefinition, EnumDump, EnumKind, FieldKind, FunctionDefinition, FunctionDump, StructDefinition, StructDump, TypeSignature};
 
 #[derive(Debug, Deserialize)]
 pub struct RawEnumDump {
@@ -42,6 +42,11 @@ pub struct JsonData {
     pub updated_at: String
 }
 
+#[derive(Deserialize, Debug)]
+pub struct FunctionData {
+    pub data: Vec<HashMap<String, Vec<HashMap<String, FunctionSignature>>>>,
+}
+
 #[derive(Deserialize, Debug, Eq, PartialEq)]
 pub struct OffsetData {
     pub data: Vec<Offset>,
@@ -53,6 +58,20 @@ pub struct Offset(
     pub usize,
 );
 
+#[derive(Deserialize, Debug)]
+pub struct FunctionSignature {
+    pub return_value: FieldSignature,
+    pub arguments: Vec<FunctionArgument>,
+    pub _unknown: usize,
+    pub flags: String
+}
+
+#[derive(Deserialize, Debug)]
+pub struct FunctionArgument {
+    pub type_: FieldSignature,
+    pub _unknown:String,
+    pub name: String
+}
 
 impl EnumDump {
     pub fn from_raw_json<R>(source: R) -> serde_json::Result<Self>
@@ -125,6 +144,7 @@ impl StructDump {
                     struct_size: 0,
                     fields: vec![],
                     package: None,
+                    functions: vec![]
                 };
 
                 for (field_name, definition) in description.into_iter().flatten() {
@@ -164,6 +184,43 @@ impl StructDump {
     }
 }
 
+impl FunctionDump {
+    pub fn from_raw_json<R>(source: R) -> serde_json::Result<Self>
+    where
+        R: Read,
+    {
+        let raw: FunctionData = serde_json::from_reader(source)?;
+
+        Ok(FunctionDump {
+            data: raw.data.into_iter().map(|map| {
+                let (class_name, functions) = map.into_iter().nth(0).unwrap();
+                let function_defs = functions.into_iter()
+                    .map(|fun| {
+                        let (fun_name, sig) = fun.into_iter().nth(0).unwrap();
+
+                        FunctionDefinition {
+                            name: fun_name,
+                            return_value: sig.return_value.into(),
+                            arguments: sig.arguments.into_iter().map(|it| it.into()).collect(),
+                            flags: sig.flags
+                        }
+                    });
+
+
+                (class_name, function_defs.collect())
+            }).collect()
+        })
+    }
+}
+
+impl From<FunctionArgument> for ArgumentDefinition {
+    fn from(value: FunctionArgument) -> Self {
+        ArgumentDefinition {
+            name: value.name,
+            type_: value.type_.into(),
+        }
+    }
+}
 
 impl From<FieldSignature> for TypeSignature {
     fn from(value: FieldSignature) -> Self {
@@ -202,6 +259,7 @@ impl From<FieldSignature> for TypeSignature {
 
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
     use super::*;
 
     #[test]
@@ -216,5 +274,11 @@ mod tests {
         assert_eq!(result, OffsetData {
             data: vec![Offset("key".to_string(), 0)]
         });
+    }
+    #[test]
+
+    fn test_functions() {
+        let result: FunctionData = serde_json::from_reader(File::open("../manasdk/dump/FunctionsInfo.json").unwrap()).unwrap();
+        
     }
 }

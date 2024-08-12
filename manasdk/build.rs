@@ -12,6 +12,7 @@ fn main() {
     let definitions = generator::generate_code("dump", &exclusions, Some(Regex::new(r#"CoreUObject|Engine"#).unwrap()))
         .expect("Failed to generate code");
 
+
     let result = PrettyPlease::default().format_tokens(definitions).expect("Failed to format code");
 
     let mut file = File::create(output_path).expect("Failed to create output file");

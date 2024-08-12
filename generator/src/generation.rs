@@ -1,6 +1,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::fs::File;
 use std::io::{Write};
+use std::iter::once;
 use std::path::Path;
 use heck::ToSnakeCase;
 use proc_macro2::{TokenStream};
@@ -8,7 +9,7 @@ use quote::{format_ident, quote, TokenStreamExt, ToTokens};
 use regex::Regex;
 use syn::{Ident, parse_str};
 
-use crate::{ClassLookup, EnumDefinition, EnumDump, EnumKind, FieldDefinition, FieldKind, Manifest, StructDefinition, StructDump, TypeSignature};
+use crate::{ClassLookup, EnumDefinition, EnumDump, EnumKind, FieldDefinition, FieldKind, FunctionDefinition, FunctionDump, Manifest, StructDefinition, StructDump, TypeSignature};
 use crate::serialization::OffsetData;
 
 trait ToRustCode {
@@ -16,6 +17,7 @@ trait ToRustCode {
     fn package(&self) -> Option<&str>;
     fn generate_code(&self, context: &ClassLookup) -> TokenStream;
     fn generate_test(&self, context: &ClassLookup) -> Option<TokenStream>;
+    fn generate_impl(&self, context: &ClassLookup) -> Option<TokenStream>;
 }
 
 struct TypeIterator<'a> {
@@ -74,7 +76,12 @@ impl<'a> Iterator for TypeIterator<'a> {
                 self.track_by_name(parent.as_str());
             }
 
-            let mut types_queue = latest_struct.fields.iter().map(|it| &it.signature).collect::<VecDeque<_>>();
+            let mut types_queue = latest_struct.fields.iter()
+                .map(|it| &it.signature)
+                .chain(latest_struct.functions.iter().flat_map(|fun| {
+                    once(&fun.return_value).chain(fun.arguments.iter().map(|it| &it.type_))
+                }))
+                .collect::<VecDeque<_>>();
             while let Some(type_) = types_queue.pop_front() {
                 if type_.kind != FieldKind::Primitive {
                     self.track_by_name(type_.name.as_str());
@@ -100,6 +107,13 @@ impl ClassLookup {
     }
 }
 
+impl TypeSignature {
+    fn is_uobject(&self) -> bool {
+        self.name.starts_with(&['U', 'A']) &&
+            self.name[1..].chars().nth(0).filter(char::is_ascii_uppercase).is_some()
+    }
+}
+
 impl ToTokens for TypeSignature {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let name_ident = format_ident!("{}", self.name);
@@ -116,11 +130,8 @@ impl ToTokens for TypeSignature {
             quote!(#name <#(#generics),*>)
         };
 
-        let is_uobject = self.name.starts_with(&['U', 'A']) && 
-            self.name[1..].chars().nth(0).filter(char::is_ascii_uppercase).is_some();
-
         let result = match self.is_pointer {
-            true if is_uobject => { quote! { UObjectPointer<#typed_stream> } }
+            true if self.is_uobject() => { quote! { UObjectPointer<#typed_stream> } }
             true => { quote! { *mut #typed_stream } }
             false => { typed_stream }
         };
@@ -187,6 +198,10 @@ impl ToRustCode for EnumDefinition {
     fn generate_test(&self, _context: &ClassLookup) -> Option<TokenStream> {
         None
     }
+
+    fn generate_impl(&self, context: &ClassLookup) -> Option<TokenStream> {
+        None
+    }
 }
 
 impl StructDefinition {
@@ -226,19 +241,7 @@ impl StructDefinition {
                 continue;
             }
 
-            let field_name = field.name.to_snake_case();
-            let field_name = match field_name.as_str() {
-                "" => format_ident!("{}", "_unknown_"),
-                _ => {
-                    if field_name.starts_with(char::is_numeric) {
-                        format_ident!("_{}", field_name)
-                    } else if parse_str::<Ident>(field_name.as_str()).is_err() {
-                        format_ident!("{}_", field_name)
-                    } else {
-                        format_ident!("{}",field_name)
-                    }
-                }
-            };
+            let field_name = as_identifier(field.name.as_str());
 
             offset = offset + field.size;
             let field_type = &field.signature;
@@ -299,6 +302,105 @@ impl ToRustCode for StructDefinition {
             }
         })
     }
+
+    fn generate_impl(&self, context: &ClassLookup) -> Option<TokenStream> {
+        let name = format_ident!("{}", self.name);
+        let functions = self.functions.iter().map(|it| {
+            it.to_tokens(self)
+        });
+
+        Some(quote! {
+            impl #name {
+                #(#functions)*
+            }
+        })
+    }
+}
+
+impl FunctionDefinition {
+    fn to_tokens(&self, owner: &StructDefinition) -> TokenStream {
+        let fn_id = format_ident!("{}", self.name.to_snake_case());
+
+        let return_value = if self.return_value.is_pointer || self.return_value.name != "void" {
+            Some(&self.return_value)
+        } else {
+            None
+        };
+        let is_static = self.flags.contains("Static");
+
+        let this_arg = if !is_static {
+            Some(quote! { &self })
+        } else { None };
+
+        // Args in the function signature
+        let signature_args = this_arg.into_iter().chain(self.arguments.iter().map(|it| {
+            let id =  as_identifier(it.name.as_str());
+            let type_ = &it.type_;
+            quote! {
+                #id: #type_
+            }
+        }));
+
+        // Only the names for filling the struct
+        let signature_arg_names = self.arguments.iter().map(|it| {
+            let id = as_identifier(it.name.as_str());
+            quote!(#id)
+
+        }).chain(return_value.map(|it| {
+            quote!(unsafe { ::std::mem::zeroed() })
+        }));
+
+        let struct_args = self.arguments.iter().map(|it| it.type_.clone()).chain(return_value.cloned());
+        let class_name = &owner.name[1..];
+        let fn_name = &self.name;
+        let unable_to_find_class = format!("Unable to find {}", &owner.name[1..]);
+        let unable_to_find_function = format!("Unable to find {}::{}", &owner.name[1..], self.name);
+
+
+        let return_type = return_value.map(|it| {
+            quote!(-> #it)
+        });
+
+        let return_statement = return_value.map(|it| {
+            let size: syn::Index = self.arguments.len().into();
+            quote!(parms.#size)
+        });
+
+
+        let this = if !is_static {
+            quote!(self)
+        } else {
+            quote!(class.default_object.as_ref().expect("No default object"))
+        };
+
+        // TODO: Handle flags
+
+        quote! {
+            pub fn #fn_id(#(#signature_args),*) #return_type {
+                #[repr(C)]
+                #[derive(Debug, Clone)]
+                struct Args(#(#struct_args),*);
+
+                let class = UClass::find(#class_name)
+                .expect(#unable_to_find_class);
+
+                let func = class
+                    .find_function_mut(#class_name, #fn_name)
+                    .expect(#unable_to_find_function);
+
+                let mut parms = Args(
+                    #(#signature_arg_names),*
+                );
+
+                let flags = func.function_flags;
+                func.function_flags |= EFunctionFlags::Native;
+                #this.process_event(func, &mut parms);
+                func.function_flags = flags;
+
+                #return_statement
+            }
+        }
+    }
 }
 
 
@@ -314,12 +416,24 @@ pub fn generate_code<P: AsRef<Path>>(base_path: P, excluded_types: &[&str], pack
     lut.add_struct_dump(structs_dump);
     lut.add_enum_dump(enums_dump);
 
+    lut.add_function_dump(FunctionDump::from_raw_json(File::open(base_path.as_ref().join("FunctionsInfo.json"))?)?);
+
 
     let units = lut.iter_compilation_units()
         .filter(|it| !excluded_types.contains(&it.name()))
         .collect::<Vec<_>>();
 
-    let code = units.iter().map(|it| it.generate_code(&lut));
+    let code = units.iter().map(|it| {
+        let code = it.generate_code(&lut);
+        let implem = it.generate_impl(&lut);
+        
+        quote!{
+            #code
+            
+            #implem
+        }
+    });
+    
     let tests = units.iter().filter_map(|it| it.generate_test(&lut));
     let offset_constants = offsets.data.iter().map(|offset| {
         let ident = format_ident!("{}", offset.0);
@@ -397,6 +511,7 @@ mod tests {
                 FieldDefinition::new("field_1".into(), 0, 1, 1, None, TypeSignature::new_simple("u8".into(), FieldKind::Primitive)),
                 FieldDefinition::new("field_2".into(), 8, 8, 1, None, TypeSignature::new_pointer("u8".into(), FieldKind::Primitive)),
             ],
+            functions: vec![],
         };
 
 
@@ -416,5 +531,21 @@ mod tests {
         }).unwrap();
 
         assert_eq!(actual, expected);
+    }
+}
+
+fn as_identifier(name: &str) -> Ident {
+    let field_name = name.to_snake_case();
+    match field_name.as_str() {
+        "" => format_ident!("{}", "_unknown_"),
+        _ => {
+            if field_name.starts_with(char::is_numeric) {
+                format_ident!("_{}", field_name)
+            } else if parse_str::<Ident>(field_name.as_str()).is_err() {
+                format_ident!("{}_", field_name)
+            } else {
+                format_ident!("{}",field_name)
+            }
+        }
     }
 }
