@@ -5,7 +5,6 @@ use std::fmt::{Debug, Formatter};
 use std::mem::ManuallyDrop;
 use std::sync::LazyLock;
 use tracing::info;
-
 use crate::{BASE_ADDRESS, FNameEntry, Offsets, UObject, UObjectPointer};
 
 #[repr(C)]
@@ -20,10 +19,11 @@ pub struct FNamePool {
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct TArray<T> {
-    pub data: *const T,
+    data: *const T,
     pub num_elements: u32,
     pub max_elements: u32,
 }
+
 
 impl<T> Default for TArray<T> {
     fn default() -> Self {
@@ -31,6 +31,58 @@ impl<T> Default for TArray<T> {
             data: std::ptr::null(),
             num_elements: 0,
             max_elements: 0
+        }
+    }
+}
+
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct TFixedSizeArray<T: Copy, const LENGTH: usize> {
+    data: *mut [Option<T>; LENGTH],
+    pub num_elements: u32,
+    pub max_elements: u32,
+}
+
+impl<T: Copy, const LENGTH: usize> TFixedSizeArray<T, LENGTH> {
+    pub fn new() -> Self {
+        Self {
+            data: Box::into_raw(Box::new([None; LENGTH])),
+            max_elements: LENGTH as u32,
+            num_elements: 0,
+        }
+    }
+    
+    pub fn len(&self) -> usize {
+        self.num_elements as usize
+    }
+    
+    pub fn iter(&self) -> impl Iterator<Item=&T> {
+        self.as_ref().iter()
+    }
+}
+
+impl<T: Copy, const LENGTH: usize> AsRef<TArray<T>> for TFixedSizeArray<T, LENGTH> {
+    fn as_ref(&self) -> &TArray<T> {
+        unsafe { std::mem::transmute(self as *const Self) }
+    }
+}
+
+impl<T: Copy, const LENGTH: usize> AsMut<TArray<T>> for TFixedSizeArray<T, LENGTH> {
+    fn as_mut(&mut self) -> &mut TArray<T> {
+        unsafe { std::mem::transmute(self as *mut Self) }
+    }
+}
+
+impl<T: Copy, const LENGTH: usize> Drop for TFixedSizeArray<T, LENGTH> {
+    fn drop(&mut self) {
+        if self.max_elements != LENGTH as u32 {
+            panic!("Memory leak in TFixedSizeArray: expected {} elements big array, but it was {} elements big!", LENGTH, self.max_elements);
+        }
+
+        unsafe {
+            // Drop data
+            let _ = Box::from_raw(self.data);
         }
     }
 }
@@ -236,5 +288,49 @@ impl<'a> Iterator for TUObjectIter<'a> {
         let remaining = self.array.len() - self.index;
 
         (remaining, Some(remaining))
+    }
+}
+
+pub struct TArrayIter<'a, T> {
+    array: &'a TArray<T>,
+    index: usize
+}
+
+pub struct TArrayIntoIter<T> {
+    array: TArray<T>,
+    index: usize
+}
+
+impl<T> std::ops::Index<usize> for TArray<T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        unsafe { std::mem::transmute(self.data.add(index)) }
+    }
+}
+
+impl<T> TArray<T> {
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        TArrayIter {
+            array: &self,
+            index: 0,
+        }
+    }
+    
+    pub fn len(&self) -> usize {
+        self.num_elements as usize
+    }
+}
+
+impl<'a, T> Iterator for TArrayIter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.array.len() {
+            self.index += 1;
+            Some(&self.array[self.index])
+        } else {
+            None
+        }
     }
 }

@@ -4,7 +4,7 @@ use std::io::{Write};
 use std::iter::once;
 use std::path::Path;
 use heck::ToSnakeCase;
-use proc_macro2::{TokenStream};
+use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, TokenStreamExt, ToTokens};
 use regex::Regex;
 use syn::{Ident, parse_str};
@@ -107,15 +107,20 @@ impl ClassLookup {
     }
 }
 
+#[derive(Clone, Debug)]
+enum PointerHandling {
+    Raw { mutable: bool },
+    Borrow { mutable: bool, lifetime: Option<String> },
+    Wrapper,
+}
+
 impl TypeSignature {
     fn is_uobject(&self) -> bool {
         self.name.starts_with(&['U', 'A']) &&
             self.name[1..].chars().nth(0).filter(char::is_ascii_uppercase).is_some()
     }
-}
 
-impl ToTokens for TypeSignature {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
+    fn to_tokens_with(&self, pointer_handling: PointerHandling) -> TokenStream {
         let name_ident = format_ident!("{}", self.name);
         let name = if self.kind == FieldKind::Enum && self.name.ends_with("Flags") {
             quote!(::flagset::FlagSet<#name_ident>)
@@ -126,17 +131,44 @@ impl ToTokens for TypeSignature {
         let typed_stream = if self.generics.is_empty() {
             quote!(#name)
         } else {
-            let generics = &self.generics;
+            let generics = self.generics.iter().map(|it| it.to_tokens_with(pointer_handling.clone()));
             quote!(#name <#(#generics),*>)
         };
 
-        let result = match self.is_pointer {
-            true if self.is_uobject() => { quote! { UObjectPointer<#typed_stream> } }
-            true => { quote! { *mut #typed_stream } }
-            false => { typed_stream }
-        };
+        match (self.is_pointer, pointer_handling) {
+            (true, PointerHandling::Borrow { mutable, lifetime }) => {
+                let lifetime_token = lifetime.map(|it| {
+                    syn::Lifetime::new(it.as_str(), Span::call_site())
+                });
+                
+                if mutable {
+                    quote! { &#lifetime_token mut #typed_stream }
+                } else {
+                    quote! { &#lifetime_token #typed_stream }
+                }
+            }
+            (true, PointerHandling::Wrapper) => {
+                if self.is_uobject() {
+                    quote! { UObjectPointer<#typed_stream> }
+                } else {
+                    quote! { *mut #typed_stream }
+                }
+            }
+            (true, PointerHandling::Raw { mutable }) => {
+                if mutable {
+                    quote! { *mut #typed_stream }
+                } else {
+                    quote! { *const #typed_stream }
+                }
+            }
+            (false, _) => { typed_stream }
+        }
+    }
+}
 
-        tokens.append_all(result);
+impl ToTokens for TypeSignature {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        tokens.append_all(self.to_tokens_with(PointerHandling::Wrapper));
     }
 }
 
@@ -280,10 +312,16 @@ impl ToRustCode for StructDefinition {
             }
         });
 
+        let derives = if self.parents.contains(&"UObject".to_string()) {
+            vec!["Debug", "Clone", "HasClassObject"]
+        } else {
+            vec!["Debug", "Clone"]
+        }.into_iter().map(|it| format_ident!("{}", it));
+
         quote! {
             #[repr(C)]
             #extend_statement
-            #[derive(Debug, Clone)]
+            #[derive(#(#derives),*)]
             pub struct #name {
                 #(#fields),*
             }
@@ -320,6 +358,7 @@ impl ToRustCode for StructDefinition {
 impl FunctionDefinition {
     fn to_tokens(&self, owner: &StructDefinition) -> TokenStream {
         let fn_id = format_ident!("{}", self.name.to_snake_case());
+        let has_out_param = self.flags.contains("HasOutParams");
 
         let return_value = if self.return_value.is_pointer || self.return_value.name != "void" {
             Some(&self.return_value)
@@ -333,24 +372,46 @@ impl FunctionDefinition {
         } else { None };
 
         // Args in the function signature
-        let signature_args = this_arg.into_iter().chain(self.arguments.iter().map(|it| {
-            let id =  as_identifier(it.name.as_str());
+        let signature_args = this_arg.into_iter().chain(self.arguments.iter().enumerate().map(|(index, it)| {
+            let id = as_identifier(it.name.as_str());
             let type_ = &it.type_;
-            quote! {
-                #id: #type_
+            let type_stream = type_.to_tokens_with(PointerHandling::Borrow { mutable: false, lifetime: None});
+
+            if has_out_param && index == self.arguments.len() - 1 {
+                quote! {
+                    #id: &mut #type_stream
+                }
+            } else {
+                quote! {
+                    #id: #type_stream
+                }
             }
         }));
 
         // Only the names for filling the struct
-        let signature_arg_names = self.arguments.iter().map(|it| {
+        let signature_arg_names = self.arguments.iter().enumerate().map(|(index, it)| {
             let id = as_identifier(it.name.as_str());
-            quote!(#id)
-
+            if has_out_param && index == self.arguments.len() - 1 {
+                quote!(unsafe { ::core::mem::transmute(#id) })
+            } else {
+                quote!(#id)
+            }
         }).chain(return_value.map(|it| {
             quote!(unsafe { ::std::mem::zeroed() })
-        }));
-
-        let struct_args = self.arguments.iter().map(|it| it.type_.clone()).chain(return_value.cloned());
+        })).chain(once(quote!{ std::default::Default::default() }));
+        
+        
+        let struct_args = self.arguments.iter().enumerate().map(|(index, it)| {
+            if has_out_param && index == self.arguments.len() - 1 {
+                let type_stream = it.type_.to_tokens_with(PointerHandling::Borrow { mutable: false, lifetime: Some("'a".into())});
+                quote!(&'a mut #type_stream)
+            } else {
+                let type_stream = it.type_.to_tokens_with(PointerHandling::Borrow { mutable: false, lifetime: Some("'a".into()) });
+                quote!(#type_stream)
+            }
+        }).chain(return_value.cloned().map(|it| quote!(#it)))
+        .chain(once(quote! { std::marker::PhantomData<&'a u8> }));
+        
         let class_name = &owner.name[1..];
         let fn_name = &self.name;
         let unable_to_find_class = format!("Unable to find {}", &owner.name[1..]);
@@ -379,14 +440,14 @@ impl FunctionDefinition {
         };
 
         let call_statement = if self.flags.contains("Native") {
-            quote!{
+            quote! {
                 let flags = func.function_flags;
                 func.function_flags |= EFunctionFlags::Native;
                 #this.process_event(func, &mut parms);
                 func.function_flags = flags;
             }
         } else {
-            quote!{
+            quote! {
                 #this.process_event(func, &mut parms);
             }
         };
@@ -394,8 +455,8 @@ impl FunctionDefinition {
         quote! {
             pub fn #fn_id(#(#signature_args),*) #return_type {
                 #[repr(C)]
-                #[derive(Debug, Clone)]
-                struct Args(#(#struct_args),*);
+                #[derive(Debug)]
+                struct Args<'a>(#(#struct_args),*);
 
                 let class = #class;
 
@@ -438,14 +499,14 @@ pub fn generate_code<P: AsRef<Path>>(base_path: P, excluded_types: &[&str], pack
     let code = units.iter().map(|it| {
         let code = it.generate_code(&lut);
         let implem = it.generate_impl(&lut);
-        
-        quote!{
+
+        quote! {
             #code
             
             #implem
         }
     });
-    
+
     let tests = units.iter().filter_map(|it| it.generate_test(&lut));
     let offset_constants = offsets.data.iter().map(|offset| {
         let ident = format_ident!("{}", offset.0);

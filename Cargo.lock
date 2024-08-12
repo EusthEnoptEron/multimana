@@ -654,6 +654,7 @@ dependencies = [
  "anyhow",
  "libmem",
  "manasdk",
+ "multiplayer",
  "nu-ansi-term 0.50.1",
  "tracing",
  "tracing-appender",
@@ -664,6 +665,11 @@ dependencies = [
 [[package]]
 name = "multiplayer"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "manasdk",
+ "tracing",
+]
 
 [[package]]
 name = "nu-ansi-term"

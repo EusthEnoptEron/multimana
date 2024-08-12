@@ -1,34 +1,75 @@
 use std::ffi::c_void;
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 use std::iter::once;
 use std::sync::LazyLock;
 
 use dashmap::DashMap;
 use flagset::FlagSet;
-use crate::{BASE_ADDRESS, EClassCastFlags, EObjectFlags, Offsets, TUObjectArray, UClass, UField, UFunction, UObject, UObjectPointer, UStruct};
+
+use crate::{BASE_ADDRESS, EClassCastFlags, EObjectFlags, HasClassObject, Offsets, TUObjectArray, UClass, UField, UFunction, UObject, UObjectPointer, UStruct};
 
 thread_local! {
     static CLASS_CACHE: DashMap<String, Option<&'static UClass>> = DashMap::new();
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum PointerError {
+    NullPointer,
+    NotValid,
+}
+
+impl Display for PointerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::error::Error for PointerError {}
+
 
 impl<T: AsRef<UObject>> UObjectPointer<T> {
     pub fn as_ref(&self) -> Option<&T> {
-        return unsafe { self.0.as_ref() };
+        unsafe { self.0.as_ref() }
+    }
+
+    pub fn try_as_ref(&self) -> Result<&T, PointerError> {
+        self.as_ref().ok_or(PointerError::NullPointer)
     }
 
     pub fn as_mut(&mut self) -> Option<&mut T> {
-        return unsafe { self.0.as_mut() };
+        unsafe { self.0.as_mut() }
+    }
+
+    pub fn try_as_mut(&mut self) -> Result<&mut T, PointerError> {
+        self.as_mut().ok_or(PointerError::NullPointer)
+    }
+
+    pub fn try_get<'a>(self) -> Result<&'a mut T, PointerError> {
+        unsafe { self.0.as_mut() }.ok_or(PointerError::NullPointer)
     }
 }
+
 
 static UOBJECT: LazyLock<&'static TUObjectArray> = LazyLock::new(|| {
     unsafe { ((*BASE_ADDRESS + Offsets::OFFSET_GOBJECTS) as *const TUObjectArray).as_ref().expect("Unable to find GObjects") }
 });
 
+
 impl UObject {
     pub fn all() -> &'static TUObjectArray {
         &UOBJECT
+    }
+
+    pub fn cast<T: HasClassObject>(&self) -> Option<&T> {
+        let class = T::static_class();
+
+        if self.is_a(class) {
+            Some(unsafe {
+                std::mem::transmute(self as *const Self)
+            })
+        } else {
+            None
+        }
     }
 
     pub fn find_object(required_type: impl Into<FlagSet<EClassCastFlags>> + Copy, predicate: impl Fn(&UObject) -> bool) -> Option<&'static UObject> {

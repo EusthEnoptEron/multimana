@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 manasdk = { path = "manasdk" }
+multiplayer = {path = "multiplayer" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "chrono"] }
 tracing-appender = "0.2"

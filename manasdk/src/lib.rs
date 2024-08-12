@@ -17,7 +17,7 @@ pub use collections::*;
 pub use enums::*;
 pub use fields::*;
 pub use functions::*;
-use manasdk_macros::extend;
+use manasdk_macros::{extend, HasClassObject};
 
 use crate::Offsets::OFFSET_GWORLD;
 
@@ -29,6 +29,10 @@ mod strings;
 
 include!(concat!(env!("OUT_DIR"), "/generated_code.rs"));
 
+pub trait HasClassObject {
+    fn static_class() -> &'static UClass;
+}
+ 
 static BASE_ADDRESS: LazyLock<usize> = LazyLock::new(|| {
     unsafe {
         let handle = windows_sys::Win32::System::LibraryLoader::GetModuleHandleA(std::ptr::null()) as usize;
@@ -109,9 +113,14 @@ pub struct FString {
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct TSubclassOf<UClass> {
-    pub class_ptr: *const UClass,
+pub struct TSubclassOf<UClass>(*const c_void, PhantomData<UClass>);
+
+impl<UClass, T> From<&T> for TSubclassOf<UClass> {
+    fn from(value: &T) -> Self {
+        TSubclassOf(value as *const T as *const c_void, PhantomData::default())
+    }
 }
+
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -203,14 +212,14 @@ impl AsRef<UObject> for UObject {
 
 #[repr(C)]
 #[extend(UObject)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, HasClassObject)]
 pub struct UField {
     pub next: UObjectPointer<UField>,
 }
 
 #[repr(C)]
 #[extend(UField)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, HasClassObject)]
 pub struct UStruct {
     pub _padding_200: [u8; 0x10],
     pub super_: UObjectPointer<UStruct>,
@@ -223,7 +232,7 @@ pub struct UStruct {
 
 #[repr(C)]
 #[extend(UStruct)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, HasClassObject)]
 pub struct UClass {
     pub _pad_1: [u8; 0x20],
     pub cast_flags: FlagSet<EClassCastFlags>,
@@ -237,7 +246,7 @@ pub type FNativeFuncPtr = fn(context: *const c_void, stack: *const c_void, resul
 
 #[repr(C)]
 #[extend(UStruct)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, HasClassObject)]
 pub struct UFunction {
     pub function_flags: FlagSet<EFunctionFlags>,
     pub _padding_300: [u8; 0x20usize],
@@ -258,14 +267,10 @@ impl UWorld {
 }
 
 impl UEngine {
-    pub fn class() -> &'static UClass {
-        UClass::find("Engine").unwrap()
-    }
-
     pub fn get_engine() -> Option<&'static Self> {
         thread_local! {
             static CACHE: LazyCell<Option<&'static UEngine>> = LazyCell::new(|| {
-                let uengine = UEngine::class();
+                let uengine = UEngine::static_class();
 
                 unsafe {
                     UObject::find_object_of_type(EClassCastFlags::None, |it| {

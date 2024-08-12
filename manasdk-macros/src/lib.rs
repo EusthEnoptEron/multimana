@@ -1,13 +1,48 @@
 use proc_macro::TokenStream;
 
 use quote::{quote, ToTokens};
-use syn::{Field, FieldMutability, Fields, ItemStruct, parse_macro_input, parse_quote, TypePath};
+use syn::{Data, DeriveInput, Fields, ItemStruct, parse_macro_input, parse_quote, Type, TypePath};
+
+#[proc_macro_derive(HasClassObject)]
+pub fn has_class_object_derive(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let child = match input.data {
+        Data::Struct(str) => { str }
+        Data::Enum(_) => { panic!("Not supported by enum") }
+        Data::Union(_) => { panic!("Not supported by union") }
+    };
+
+    let name = input.ident;
+    let parent_type = match child.fields {
+        Fields::Named(fields) => { fields.named.first().unwrap().ty.clone() }
+        Fields::Unnamed(fields) => { fields.unnamed.first().unwrap().ty.clone() }
+        Fields::Unit => { panic!("Unit not supported") }
+    };
+
+    let type_name = match parent_type {
+        Type::Path(path) => { path.path.segments.last().unwrap().ident.to_string() }
+        _ => { panic!("Expected path!") }
+    };
+
+    let simple_name = &type_name[1..];
+
+    let expanded = quote! {
+        impl HasClassObject for #name {
+            fn static_class() -> &'static UClass {
+                UClass::find(#simple_name).unwrap()
+            }
+        }
+    };
+
+    expanded.into()
+}
+
 
 #[proc_macro_attribute]
 pub fn extend(args: TokenStream, input: TokenStream) -> TokenStream {
     let parent = parse_macro_input!(args as TypePath);
     let mut child = parse_macro_input!(input as ItemStruct);
-    
+
     match &mut child.fields {
         Fields::Named(named) => {
             named.named.insert(0, parse_quote! {

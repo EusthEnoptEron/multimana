@@ -70,7 +70,7 @@ impl FName {
         let mut string = name.get_string().to_string();
 
         if self.number > 0 {
-            string.add_assign(format!("_{}", self.number).as_str());
+            string.add_assign(format!("_{}", self.number - 1).as_str());
         }
 
         Some(string)

@@ -1,13 +1,14 @@
-use std::cell::OnceCell;
+use std::cell::{LazyCell, OnceCell, RefCell};
 use std::ffi::c_void;
 use std::marker::PhantomData;
-use std::sync::OnceLock;
+use std::sync::{LazyLock, Mutex, OnceLock, RwLock};
 use std::thread::sleep;
 use std::time::Duration;
 use anyhow::Context;
 use libmem::{Address, Trampoline};
-use tracing::info;
+use tracing::{info, warn};
 use manasdk::{UClass, UEngine, UGameplayStatics, UObject, UObjectPointer, UWorld};
+use multiplayer::MultiplayerMod;
 
 #[derive(Debug)]
 struct TrampolineWrapper<T>(Trampoline, PhantomData<T>);
@@ -30,19 +31,20 @@ impl<T> From<Trampoline> for TrampolineWrapper<T> {
 }
 
 
+static MOD: LazyLock<Mutex<RefCell<MultiplayerMod>>> = LazyLock::new(|| {
+    let mut mod_ = MultiplayerMod::default();
+    mod_.init();
+
+    Mutex::new(RefCell::new(mod_))
+});
+
 type TickFn = fn(this: *const c_void);
 static ORIGINAL_TICK: OnceLock<TrampolineWrapper<TickFn>> = OnceLock::new();
 fn tick(this: *const c_void) {
-    let world = UWorld::get_world();
-    if let Some(world) = world {
-        info!("World: {} ({:x?})", world.name(), world as *const UWorld);
-
-        let player_controller = UGameplayStatics::get_player_controller(world.into(), 0);
-        if let Some(controller) = player_controller.as_ref() {
-            info!("Controller: {}", controller.name());
-        }
+    if let Err(e) = MOD.lock().unwrap().borrow_mut().tick() {
+        warn!("Error in tick: {}", e);
     }
-
+    
     if let Some(original_fn) = ORIGINAL_TICK.get() {
         original_fn.get()(this);
     }
