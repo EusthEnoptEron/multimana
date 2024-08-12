@@ -207,6 +207,7 @@ pub struct FunctionDefinition {
     pub return_value: TypeSignature,
     pub arguments: Vec<ArgumentDefinition>,
     pub flags: String,
+    pub offset: usize
 }
 
 #[derive(Clone, Debug)]

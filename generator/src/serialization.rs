@@ -62,7 +62,7 @@ pub struct Offset(
 pub struct FunctionSignature {
     pub return_value: FieldSignature,
     pub arguments: Vec<FunctionArgument>,
-    pub _unknown: usize,
+    pub offset: usize,
     pub flags: String
 }
 
@@ -202,7 +202,8 @@ impl FunctionDump {
                             name: fun_name,
                             return_value: sig.return_value.into(),
                             arguments: sig.arguments.into_iter().map(|it| it.into()).collect(),
-                            flags: sig.flags
+                            flags: sig.flags,
+                            offset: sig.offset
                         }
                     });
 
