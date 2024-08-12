@@ -7,7 +7,7 @@ use std::time::Duration;
 use anyhow::Context;
 use libmem::{Address, Trampoline};
 use tracing::info;
-use manasdk::{UClass, UEngine, UGameplayStatics, UObject, UWorld};
+use manasdk::{UClass, UEngine, UGameplayStatics, UObject, UObjectPointer, UWorld};
 
 #[derive(Debug)]
 struct TrampolineWrapper<T>(Trampoline, PhantomData<T>);
@@ -37,7 +37,7 @@ fn tick(this: *const c_void) {
     if let Some(world) = world {
         info!("World: {} ({:x?})", world.name(), world as *const UWorld);
 
-        let player_controller = UGameplayStatics::get_player_controller(world, 0);
+        let player_controller = UGameplayStatics::get_player_controller(world.into(), 0);
         if let Some(controller) = player_controller.as_ref() {
             info!("Controller: {}", controller.name());
         }

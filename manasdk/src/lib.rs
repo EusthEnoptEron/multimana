@@ -43,12 +43,24 @@ fn resolve_offset<T>(offset: usize) -> *mut T {
 }
 
 
+
 /// Pointer to an UObject that might be null
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct UObjectPointer<T: AsRef<UObject>>(
     *mut T
 );
+
+
+impl<U, T> From<&U> for UObjectPointer<T>
+where
+    U: Deref<Target = T>,
+    T: AsRef<UObject>,
+{
+    fn from(value: &U) -> Self {
+        UObjectPointer(value as &T as *const T as *mut T)
+    }
+}
 
 impl<T: AsRef<UObject>> Default for UObjectPointer<T> {
     fn default() -> Self {

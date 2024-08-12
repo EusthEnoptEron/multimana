@@ -366,6 +366,11 @@ impl FunctionDefinition {
             quote!(parms.#size)
         });
 
+        let class = if !is_static {
+            quote!(&self.class.as_ref().expect(#unable_to_find_class))
+        } else {
+            quote!(UClass::find(#class_name).expect(#unable_to_find_class))
+        };
 
         let this = if !is_static {
             quote!(self)
@@ -373,7 +378,18 @@ impl FunctionDefinition {
             quote!(class.default_object.as_ref().expect("No default object"))
         };
 
-        // TODO: Handle flags
+        let call_statement = if self.flags.contains("Native") {
+            quote!{
+                let flags = func.function_flags;
+                func.function_flags |= EFunctionFlags::Native;
+                #this.process_event(func, &mut parms);
+                func.function_flags = flags;
+            }
+        } else {
+            quote!{
+                #this.process_event(func, &mut parms);
+            }
+        };
 
         quote! {
             pub fn #fn_id(#(#signature_args),*) #return_type {
@@ -381,8 +397,7 @@ impl FunctionDefinition {
                 #[derive(Debug, Clone)]
                 struct Args(#(#struct_args),*);
 
-                let class = UClass::find(#class_name)
-                .expect(#unable_to_find_class);
+                let class = #class;
 
                 let func = class
                     .find_function_mut(#class_name, #fn_name)
@@ -392,10 +407,7 @@ impl FunctionDefinition {
                     #(#signature_arg_names),*
                 );
 
-                let flags = func.function_flags;
-                func.function_flags |= EFunctionFlags::Native;
-                #this.process_event(func, &mut parms);
-                func.function_flags = flags;
+                #call_statement
 
                 #return_statement
             }
