@@ -173,6 +173,12 @@ pub struct FMulticastInlineDelegateProperty_ {
 
 #[repr(C)]
 #[derive(Debug, Clone)]
+pub struct FMulticastInlineDelegate {
+    _padding: [u8; 16],
+}
+
+#[repr(C)]
+#[derive(Debug, Clone)]
 pub struct FDelegateProperty_ {
     pub object: FWeakObjectPtr,
     pub function_name: FName,

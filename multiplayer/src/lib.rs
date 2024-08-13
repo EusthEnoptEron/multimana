@@ -60,7 +60,7 @@ impl MultiplayerMod {
         info!("Gettings actors");
         UGameplayStatics::get_all_actors_of_class(world, APawn::static_class().into(), actors.as_mut());
         
-        info!("Actor count: {}", actors.len());
+        info!("Actor count: {} (capacity={})", actors.len(), actors.max_elements);
         if let Some(actor) = actors.iter().find(|it| it.class.as_ref().unwrap().name() == "BP_P002_C") {
             second_player.possess(actor.cast().context("Unable to cast actor to pawn")?);
         } else {

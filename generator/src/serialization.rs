@@ -1,7 +1,9 @@
+use crate::{ArgumentDefinition, EnumDefinition, EnumDump, EnumKind, FieldKind, FunctionDefinition, FunctionDump, StructDefinition, StructDump, TypeSignature};
+use proc_macro2::Ident;
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
-use serde::Deserialize;
-use crate::{ArgumentDefinition, EnumDefinition, EnumDump, EnumKind, FieldKind, FunctionDefinition, FunctionDump, StructDefinition, StructDump, TypeSignature};
+use syn::parse_str;
 
 #[derive(Debug, Deserialize)]
 pub struct RawEnumDump {
@@ -39,7 +41,7 @@ struct MDKClassSize {
 #[derive(Deserialize, Debug)]
 pub struct JsonData {
     pub data: Vec<HashMap<String, Vec<HashMap<String, FieldDefinition>>>>,
-    pub updated_at: String
+    pub updated_at: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -63,14 +65,14 @@ pub struct FunctionSignature {
     pub return_value: FieldSignature,
     pub arguments: Vec<FunctionArgument>,
     pub offset: usize,
-    pub flags: String
+    pub flags: String,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct FunctionArgument {
     pub type_: FieldSignature,
-    pub _unknown:String,
-    pub name: String
+    pub reference: String,
+    pub name: String,
 }
 
 impl EnumDump {
@@ -84,22 +86,33 @@ impl EnumDump {
             data: raw.data.into_iter().map(|enum_type| {
                 let (enum_name, enum_def) = enum_type.into_iter().nth(0).unwrap();
                 let kind = match enum_def.1.as_str() {
-                    "uint8" => EnumKind::U8,
-                    "uint16" => EnumKind::U16,
-                    "uint32" => EnumKind::U32,
-                    "uint64" => EnumKind::U64,
+                    "uint8" | "uint8_t" => EnumKind::U8,
+                    "uint16" | "uint16_t" => EnumKind::U16,
+                    "uint32" | "uint32_t" => EnumKind::U32,
+                    "uint64" | "uint64_t" => EnumKind::U64,
                     &_ => panic!("Invalid enum kind: {}", enum_def.1)
                 };
 
                 let max_val = kind.max_val();
                 let mut taken = HashSet::new();
+                let mut taken_names = HashSet::new();
                 let mut options = vec![];
 
                 for it in enum_def.0 {
                     let (mut option_name, option_value) = it.into_iter().nth(0).unwrap();
-                    if option_name == "Self" {
-                        option_name = "Self_".to_string();
+
+                    option_name = option_name.replace(&format!("{}__", enum_name), "");
+                    if parse_str::<Ident>(option_name.as_str()).is_err() {
+                        option_name += "_";
                     }
+
+                    let mut counter = 0;
+                    let base_name = option_name.clone();
+                    while !taken_names.insert(option_name.clone()) {
+                        option_name += &format!("{}_{}", base_name, counter);
+                        counter += 1;
+                    }
+
 
                     let option = if option_value < 0 {
                         Some((option_name, max_val))
@@ -144,7 +157,7 @@ impl StructDump {
                     struct_size: 0,
                     fields: vec![],
                     package: None,
-                    functions: vec![]
+                    functions: vec![],
                 };
 
                 for (field_name, definition) in description.into_iter().flatten() {
@@ -203,7 +216,7 @@ impl FunctionDump {
                             return_value: sig.return_value.into(),
                             arguments: sig.arguments.into_iter().map(|it| it.into()).collect(),
                             flags: sig.flags,
-                            offset: sig.offset
+                            offset: sig.offset,
                         }
                     });
 
@@ -218,6 +231,7 @@ impl From<FunctionArgument> for ArgumentDefinition {
     fn from(value: FunctionArgument) -> Self {
         ArgumentDefinition {
             name: value.name,
+            is_out_param: value.reference == "&",
             type_: value.type_.into(),
         }
     }
@@ -225,19 +239,27 @@ impl From<FunctionArgument> for ArgumentDefinition {
 
 impl From<FieldSignature> for TypeSignature {
     fn from(value: FieldSignature) -> Self {
+        if value.0 == "TEnumAsByte" && value.3.len() == 1 {
+            let generics = value.3;
+            return generics.into_iter().nth(0).unwrap().into();
+        }
+
         Self {
             name: match value.0.as_str() {
                 "float" => "f32".to_string(),
                 "double" => "f64".to_string(),
-                "int64" => "i64".to_string(),
-                "int32" => "i32".to_string(),
-                "int16" => "i16".to_string(),
-                "int8" => "i8".to_string(),
-                "uint64" => "u64".to_string(),
-                "uint32" => "u32".to_string(),
-                "uint16" => "u16".to_string(),
-                "uint8" => "u8".to_string(),
+                "int64" | "int64_t" => "i64".to_string(),
+                "int32" | "int32_t" => "i32".to_string(),
+                "int16" | "int16_t" => "i16".to_string(),
+                "int8" | "int8_t" => "i8".to_string(),
+                "uint64" | "uint64_t" => "u64".to_string(),
+                "uint32" | "uint32_t" => "u32".to_string(),
+                "uint16" | "uint16_t" => "u16".to_string(),
+                "uint8" | "uint8_t" => "u8".to_string(),
                 "bool" => "bool".to_string(),
+                "wchar_t" => "u16".to_string(),
+                "wchar_t*" => "usize".to_string(),
+                "unsigned char" => "u8".to_string(),
                 name => name.replace(":", "_"), // handle other types as needed
             },
             kind: match value.1.as_str() {
@@ -260,8 +282,8 @@ impl From<FieldSignature> for TypeSignature {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::File;
     use super::*;
+    use std::fs::File;
 
     #[test]
     fn test_offsets() {
@@ -271,7 +293,7 @@ mod tests {
                 "dumper_used": "Dumper-7"
             },
             "data": [["key", 0]]}"#).unwrap();
-        
+
         assert_eq!(result, OffsetData {
             data: vec![Offset("key".to_string(), 0)]
         });
@@ -280,6 +302,5 @@ mod tests {
 
     fn test_functions() {
         let result: FunctionData = serde_json::from_reader(File::open("../manasdk/dump/FunctionsInfo.json").unwrap()).unwrap();
-        
     }
 }

@@ -23,3 +23,4 @@ bitfield = "0.16.1"
 tracing = "0.1.40"
 windows-sys = { version = "0.59.0", features = ["Win32_System_LibraryLoader"] }
 dashmap = "6.0.1"
+itertools = "0.13.0"

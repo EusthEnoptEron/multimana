@@ -2,7 +2,6 @@ use std::collections::{HashSet, VecDeque};
 use std::fs::File;
 use std::io::{Write};
 use std::iter::once;
-use std::marker::PhantomData;
 use std::path::Path;
 use heck::ToSnakeCase;
 use proc_macro2::{Span, TokenStream};
@@ -366,8 +365,11 @@ impl FunctionDefinition {
             None
         };
 
-        let has_out_param = self.flags.contains("HasOutParams");
         let is_static = self.flags.contains("Static");
+        let out_params = self.arguments.iter().enumerate()
+            .filter(|(_index, it)| it.is_out_param)
+            .map(|(index, it)| (index, it))
+            .collect::<Vec<_>>();
 
         let this_arg = if !is_static {
             Some(quote! { &self })
@@ -377,9 +379,9 @@ impl FunctionDefinition {
         let signature_args = this_arg.into_iter().chain(self.arguments.iter().enumerate().map(|(index, it)| {
             let id = as_identifier(it.name.as_str());
             let type_ = &it.type_;
-            let type_stream = type_.to_tokens_with(PointerHandling::Borrow { mutable: false, lifetime: None});
+            let type_stream = type_.to_tokens_with(PointerHandling::Borrow { mutable: false, lifetime: None });
 
-            if has_out_param && index == self.arguments.len() - 1 {
+            if it.is_out_param {
                 quote! {
                     #id: &mut #type_stream
                 }
@@ -392,22 +394,22 @@ impl FunctionDefinition {
 
         // The arguments within the struct
         let struct_args = self.arguments.iter().enumerate().map(|(index, it)| {
-            if has_out_param && index == self.arguments.len() - 1 {
-                let type_stream = it.type_.to_tokens_with(PointerHandling::Borrow { mutable: false, lifetime: Some("'b".into())});
+            if it.is_out_param {
+                let generic_name = format!("'b{}", index);
+                let type_stream = it.type_.to_tokens_with(PointerHandling::Borrow { mutable: false, lifetime: Some(generic_name) });
                 quote!(#type_stream)
             } else {
                 let type_stream = it.type_.to_tokens_with(PointerHandling::Borrow { mutable: false, lifetime: Some("'a".into()) });
                 quote!(#type_stream)
             }
         }).chain(return_value.cloned().map(|it| quote!(#it)))
-            .chain(once(quote! { std::marker::PhantomData<&'a u8> }))
-            .chain(once(quote! { std::marker::PhantomData<&'b u8> }));
+            .chain(once(quote! { std::marker::PhantomData<&'a u8> }));
 
 
         // Only the names for filling the struct
         let signature_arg_names = self.arguments.iter().enumerate().map(|(index, it)| {
             let id = as_identifier(it.name.as_str());
-            if has_out_param && index == self.arguments.len() - 1 {
+            if it.is_out_param {
                 quote!(unsafe { ::core::mem::zeroed() })
             } else {
                 quote!(#id)
@@ -415,8 +417,7 @@ impl FunctionDefinition {
         }).chain(return_value.map(|it| {
             quote!(unsafe { ::std::mem::zeroed() })
         }))
-            .chain(once(quote!{ std::default::Default::default() }))
-            .chain(once(quote!{ std::default::Default::default() }));
+            .chain(once(quote! { std::default::Default::default() }));
 
         let class_name = &owner.name[1..];
         let fn_name = &self.name;
@@ -458,33 +459,37 @@ impl FunctionDefinition {
             }
         };
 
-        let swap_out_into = if has_out_param {
-            let index: syn::Index = (self.arguments.len() - 1).into();
-            let arg: syn::Ident = as_identifier(self.arguments.last().unwrap().name.as_str());
+        let swap_out_into = out_params.iter().map(|(index, arg)| {
+            let accessor: syn::Index = (*index).into();
+            let arg: syn::Ident = as_identifier(arg.name.as_str());
 
-            Some(quote! {
-                std::mem::swap(&mut parms.#index, #arg);
+            quote! {
+                std::mem::swap(&mut parms.#accessor, #arg);
+            }
+        });
+
+        let swap_out_back = out_params.iter().map(|(index, arg)| {
+            let accessor: syn::Index = (*index).into();
+            let arg: syn::Ident = as_identifier(arg.name.as_str());
+
+            quote! {
+                std::mem::swap(#arg, &mut parms.#accessor);
+            }
+        });
+        
+        let generics = once("'a".to_string()).chain(
+            out_params.iter().filter(|(_, arg)| arg.type_.has_pointers()).map(|(index, _)| {
+                format!("'b{}", index)
             })
-        } else {
-            None
-        };
-
-        let swap_out_back = if has_out_param {
-            let index: syn::Index = (self.arguments.len() - 1).into();
-            let arg: syn::Ident = as_identifier(self.arguments.last().unwrap().name.as_str());
-
-            Some(quote! {
-                std::mem::swap(#arg, &mut parms.#index);
-            })
-        } else {
-            None
-        };
+        ).map(|name| {
+            syn::Lifetime::new(name.as_str(), Span::call_site())
+        });
 
         quote! {
             pub fn #fn_id(#(#signature_args),*) #return_type {
                 #[repr(C)]
                 #[derive(Debug)]
-                struct Args<'a,'b>(#(#struct_args),*);
+                struct Args<#(#generics),*>(#(#struct_args),*);
 
                 let class = #class;
 
@@ -496,11 +501,11 @@ impl FunctionDefinition {
                     #(#signature_arg_names),*
                 );
 
-                #swap_out_into
+                #(#swap_out_into)*
 
                 #call_statement
 
-                #swap_out_back
+                #(#swap_out_back)*
 
                 #return_statement
             }

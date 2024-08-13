@@ -44,7 +44,7 @@ pub struct EnumDump {
 
 #[derive(Clone, Debug)]
 pub struct FunctionDump {
-    pub data: HashMap<String, Vec<FunctionDefinition>>
+    pub data: HashMap<String, Vec<FunctionDefinition>>,
 }
 
 #[derive(Clone, Debug)]
@@ -117,7 +117,7 @@ impl ClassLookup {
                 .cloned();
 
             item.package = package;
-            
+
             if let Some(old_value) = self.classes.insert(item.name.clone(), item) {
                 panic!("Value clash {:?}", old_value);
             }
@@ -158,7 +158,7 @@ impl ClassLookup {
     pub fn iter_structs(&self) -> impl Iterator<Item=&StructDefinition> {
         self.classes.values().filter(|&class| {
             let package = class.package.as_ref();
-            
+
             if let Some(filter) = &self.filter {
                 package.is_none() || filter.is_match(package.unwrap().as_str())
             } else { true }
@@ -188,7 +188,7 @@ pub struct StructDefinition {
     pub struct_size: usize,
     pub fields: Vec<FieldDefinition>,
     pub package: Option<String>,
-    pub functions: Vec<FunctionDefinition>
+    pub functions: Vec<FunctionDefinition>,
 }
 
 #[derive(Clone, Debug)]
@@ -207,13 +207,14 @@ pub struct FunctionDefinition {
     pub return_value: TypeSignature,
     pub arguments: Vec<ArgumentDefinition>,
     pub flags: String,
-    pub offset: usize
+    pub offset: usize,
 }
 
 #[derive(Clone, Debug)]
 pub struct ArgumentDefinition {
     pub name: String,
-    pub type_: TypeSignature
+    pub is_out_param: bool,
+    pub type_: TypeSignature,
 }
 
 impl FieldDefinition {
@@ -231,6 +232,14 @@ pub struct TypeSignature {
 }
 
 impl TypeSignature {
+    pub fn has_pointers(&self) -> bool {
+        if self.is_pointer {
+            true
+        } else {
+            self.generics.iter().any(|it| it.has_pointers())
+        }
+    }
+
     pub fn new_struct(name: String) -> Self {
         Self {
             name,

@@ -7,7 +7,7 @@ fn main() {
     let out_dir = std::env::var("OUT_DIR").unwrap();
 
     let output_path = format!("{}/generated_code.rs", out_dir);
-    let exclusions = vec!["UObject", "UClass", "UFunction", "UStruct", "UField"];
+    let exclusions = vec!["UObject", "UClass", "UFunction", "UStruct", "UField", "TArray", "TSoftClassPtr", "TLazyObjectPtr", "TSoftObjectPtr", "TWeakObjectPtr", "FWeakObjectPtr", "TMap", "TSet", "FText", "FString", "FName"];
 
     let definitions = generator::generate_code("dump", &exclusions, Some(Regex::new(r#"CoreUObject|Engine"#).unwrap()))
         .expect("Failed to generate code");
@@ -17,7 +17,6 @@ fn main() {
 
     let mut file = File::create(output_path).expect("Failed to create output file");
     write!(file, "{}", result).unwrap();
-
 
     println!("cargo::rerun-if-changed=build.rs");
 }
