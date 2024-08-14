@@ -9,6 +9,8 @@ use crate::setup::setup;
 
 mod console;
 mod setup;
+mod multiplayer;
+mod utils;
 
 #[no_mangle]
 #[allow(non_snake_case)]

@@ -248,7 +248,38 @@ pub struct UClass {
 }
 
 
-pub type FNativeFuncPtr = fn(context: *const c_void, stack: *const c_void, result: *mut c_void);
+pub type FNativeFuncPtr = fn(context: &UObject, stack: &FFrame, result: *mut c_void);
+
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct FFrame<'a> {
+    pub pad_0x0000: [u8; 0x10],            // 0x0000
+    pub node: &'a UFunction,              // 0x0010
+    pub object: &'a UObject,              // 0x0018
+    pub code: &'a u8,                     // 0x0020
+    pub locals: &'a c_void,                   // 0x0028
+    pub most_recent_property: *mut UProperty,
+    pub most_recent_property_address: *mut u8,
+    pub primary_data: [u32; 8],            // Execution flow stack for compiled Kismet code
+    pub secondary_data: *mut u8,
+    pub array_num: i32,
+    pub array_max: i32,
+    pub previous_frame: *mut FFrame<'a>,       // Previous frame on the stack
+    pub out_parms: *mut c_void,                // Contains information on any out parameters
+    pub property_chain_for_compiled_in: *mut UField,  // Property chain for compiled-in functions
+    pub current_native_function: *mut UFunction, // Currently executed native function
+    pub b_array_context_failed: bool,      // Indicates if array context failed
+}
+
+impl<'a> FFrame<'a> {
+    pub unsafe fn get_params<T>(&self) -> Option<&mut T> {
+        unsafe {
+            let t_p: *mut T = std::mem::transmute(self.locals);
+            t_p.as_mut()
+        }
+    }
+}
 
 #[repr(C)]
 #[extend(UStruct)]

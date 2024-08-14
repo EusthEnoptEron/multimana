@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 manasdk = { path = "manasdk" }
-multiplayer = {path = "multiplayer" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "chrono"] }
 tracing-appender = "0.2"
@@ -15,9 +14,10 @@ windows-sys = { version = "0.59.0", features = ["Win32", "Win32_UI_WindowsAndMes
 nu-ansi-term = "0.50.1"
 libmem = "5.0.1"
 anyhow = "1.0.86"
+lazy_static = "1.5.0"
 
 [lib]
 crate-type = ["cdylib"]
 
 [workspace]
-members = ["generator", "manasdk", "manasdk-macros", "multiplayer"]
+members = ["generator", "manasdk", "manasdk-macros"]

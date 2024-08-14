@@ -80,6 +80,14 @@ impl UObject {
     pub unsafe fn find_object_of_type<T>(required_type: impl Into<FlagSet<EClassCastFlags>> + Copy, predicate: impl Fn(&UObject) -> bool) -> Option<&'static T> {
         Self::find_object(required_type, predicate).map(|it| std::mem::transmute(it))
     }
+    
+    pub fn find_function(predicate: impl Fn(&UFunction) -> bool) -> Option<&'static UFunction> {
+        unsafe {
+            Self::find_object_of_type(EClassCastFlags::Function, |it| {
+                predicate(std::mem::transmute(it))
+            })
+        }
+    }
 
     pub fn name(&self) -> String {
         self.name.to_string().unwrap_or("None".to_string())

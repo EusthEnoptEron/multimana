@@ -668,23 +668,14 @@ name = "multimana"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "lazy_static",
  "libmem",
  "manasdk",
- "multiplayer",
  "nu-ansi-term 0.50.1",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "multiplayer"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "manasdk",
- "tracing",
 ]
 
 [[package]]
