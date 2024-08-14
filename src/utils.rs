@@ -7,6 +7,7 @@ use lazy_static::lazy_static;
 use libmem::Trampoline;
 use tracing::error;
 use crate::multiplayer::MultiplayerMod;
+use crate::tracer::Tracer;
 
 #[derive(Debug)]
 pub struct TrampolineWrapper<T>(Trampoline, PhantomData<T>);
@@ -33,6 +34,7 @@ lazy_static! {
     pub static ref MODS: HashMap<u32, Box<dyn Mod + 'static>> = {
         let mut m: HashMap<u32, Box<dyn Mod + 'static>> = HashMap::new();
         m.insert(MultiplayerMod::id(), Box::new(MultiplayerMod::default()));
+        m.insert(Tracer::id(), Box::new(Tracer::default()));
         
         for item in m.values() {
             if let Err(error) = item.init() {

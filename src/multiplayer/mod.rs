@@ -1,12 +1,10 @@
 use crate::utils::{Mod, TrampolineWrapper};
 use anyhow::{anyhow, bail, Context, Result};
 use libmem::Address;
-use manasdk::{AActor, APawn, EClassCastFlags, EFunctionFlags, EObjectFlags, ETwoPlayerSplitScreenType, FFrame, FNativeFuncPtr, HasClassObject, TArray, TFixedSizeArray, UClass, UField, UFunction, UGameMapsSettings, UGameplayStatics, UObject, UObjectPointer, UWorld};
+use manasdk::{AActor, APawn, EFunctionFlags, ETwoPlayerSplitScreenType, FFrame, FNativeFuncPtr, HasClassObject, TArray, TFixedSizeArray, UClass, UField, UFunction, UGameMapsSettings, UGameplayStatics, UObject, UObjectPointer, UWorld};
 use std::any::Any;
-use std::cell::RefCell;
 use std::ffi::c_void;
-use std::ptr::addr_of;
-use std::sync::{Mutex, OnceLock, RwLock};
+use std::sync::RwLock;
 use tracing::{info, instrument, span, warn, Level};
 
 
@@ -57,9 +55,7 @@ impl Mod for MultiplayerMod {
                     .into()
             }
         );
-
         info!("Hooked into exec function");
-
         Ok(())
     }
 

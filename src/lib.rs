@@ -11,6 +11,7 @@ mod console;
 mod setup;
 mod multiplayer;
 mod utils;
+mod tracer;
 
 #[no_mangle]
 #[allow(non_snake_case)]
