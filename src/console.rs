@@ -1,3 +1,4 @@
+use crate::statics::TRACER_RELOAD_HANDLE;
 use std::ptr;
 use std::sync::{Mutex, OnceLock};
 use tracing::Level;
@@ -9,7 +10,7 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::fmt::time::ChronoLocal;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{filter, fmt, EnvFilter, Layer};
+use tracing_subscriber::{filter, fmt, reload, EnvFilter, Layer};
 use windows_sys::core::PCSTR;
 use windows_sys::Win32::Foundation::{GENERIC_WRITE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{CreateFileA, OPEN_EXISTING};
@@ -45,12 +46,18 @@ pub fn open_console() {
             // Initialize the tracing subscriber with both console and file logging
             let file_appender = RollingFileAppender::new(Rotation::NEVER, ".", "log_output.log");
             let (non_blocking_file_appender, file_guard) = tracing_appender::non_blocking(file_appender);
+
             let (chrome_layer, chrome_guard) = ChromeLayerBuilder::new()
                 .include_args(true)
                 .build();
-
+            
+            let (tracer_filter, reload_handle) = reload::Layer::new(Targets::new()
+                .with_target("tracer", Level::ERROR)
+            );
             let _ = FILE_GUARD.set(file_guard);
             let _ = CHROME_GUARD.set(Mutex::new(chrome_guard));
+
+            let _ = TRACER_RELOAD_HANDLE.set(reload_handle);
 
             let fmt_layer = fmt::layer()
                 .with_writer(std::io::stdout)
@@ -75,7 +82,7 @@ pub fn open_console() {
                         .with_filter(env_filter)
                         .with_filter(filter::filter_fn(|metadata| metadata.target() != "tracer"))
                         .and_then(chrome_layer.with_filter(
-                            Targets::new().with_target("tracer", Level::TRACE)
+                            tracer_filter
                         ))
                 )
                 .init();

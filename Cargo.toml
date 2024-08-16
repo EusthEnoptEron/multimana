@@ -19,6 +19,7 @@ tracing-chrome = "0.7.2"
 eframe = { version = "0.28.1", features = ["default_fonts", "persistence"] }
 serde = { version = "1.0.204", features = ["derive"] }
 winit = "0.29.15"
+concurrent-queue = "2.5.0"
 
 [lib]
 crate-type = ["cdylib"]

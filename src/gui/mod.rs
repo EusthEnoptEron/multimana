@@ -4,6 +4,7 @@ use eframe::{egui};
 use winit::platform::windows::EventLoopBuilderExtWindows;
 
 mod app;
+mod tracer_window;
 
 pub fn open_gui() {
     std::thread::spawn(|| {
@@ -24,4 +25,10 @@ pub fn open_gui() {
             Box::new(|cc| Ok(Box::new(app::App::new(cc)))),
         ).expect("Failure running GUI");
     });
+}
+
+
+trait Render {
+    fn show(&mut self, ctx: &egui::Context);
+    fn render(&mut self, ui: &mut egui::Ui) -> anyhow::Result<()>;
 }

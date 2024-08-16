@@ -8,11 +8,12 @@ use windows_sys::Win32::Foundation::{BOOL, HINSTANCE};
 use windows_sys::Win32::System::SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH};
 
 mod console;
-mod setup;
-mod multiplayer;
-mod utils;
-mod tracer;
 mod gui;
+mod multiplayer;
+mod setup;
+mod statics;
+mod tracer;
+mod utils;
 
 #[no_mangle]
 #[allow(non_snake_case)]
@@ -27,7 +28,7 @@ pub extern "system" fn DllMain(
                 let panics = std::panic::catch_unwind(|| {
                     open_console();
                     open_gui();
-                    
+
                     if let Err(e) = setup() {
                         error!("Error happened: {:?}", e);
                     }

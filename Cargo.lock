@@ -2165,6 +2165,7 @@ name = "multimana"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "concurrent-queue",
  "eframe",
  "lazy_static",
  "libmem",

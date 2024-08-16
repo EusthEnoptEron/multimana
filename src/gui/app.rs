@@ -1,4 +1,9 @@
+use crate::gui::tracer_window::TracerWindow;
+use crate::gui::Render;
+use crate::setup::run_in_tick;
+use anyhow::Context;
 use eframe::egui;
+use manasdk::{UGameplayStatics, UWorld};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -9,6 +14,9 @@ pub struct App {
 
     #[serde(skip)] // This how you opt-out of serialization of a field
     value: f32,
+    
+    #[serde(skip)]
+    panels: Vec<Box<dyn Render>>
 }
 
 impl Default for App {
@@ -17,6 +25,9 @@ impl Default for App {
             // Example stuff:
             label: "Hello World!".to_owned(),
             value: 2.7,
+            panels: vec![
+                Box::new(TracerWindow::default())
+            ]
         }
     }
 }
@@ -29,15 +40,18 @@ impl App {
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
-        if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        }
-
-        Default::default()
+        let mut app: App = if let Some(storage) = cc.storage {
+            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
+        } else {
+            Default::default()
+        };
+        
+        app
     }
 }
 
 impl eframe::App for App {
+
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
@@ -73,7 +87,14 @@ impl eframe::App for App {
 
             ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
             if ui.button("Increment").clicked() {
-                self.value += 1.0;
+                if let Ok(name) = run_in_tick(|| {
+                    let world = UWorld::get_world().context("World missing")?;
+                    let player_pawn = UGameplayStatics::get_player_pawn(world, 0).try_get()?;
+
+                    Ok(player_pawn.name())
+                }) {
+                    self.label = name;
+                }
             }
 
             ui.separator();
@@ -88,6 +109,11 @@ impl eframe::App for App {
                 egui::warn_if_debug_build(ui);
             });
         });
+
+
+        for panel in self.panels.iter_mut() {
+            panel.show(ctx);
+        }
     }
 
     /// Called by the frame work to save state before shutdown.
