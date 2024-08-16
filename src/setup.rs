@@ -45,6 +45,6 @@ pub fn setup() -> anyhow::Result<()> {
     };
 
     ORIGINAL_TICK.set(unsafe { libmem::hook_code(tick_ptr, tick as Address).context("Unable to create tick hook") }?.into()).unwrap();
-
+    
     Ok(())
 }

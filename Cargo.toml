@@ -16,6 +16,9 @@ libmem = "5.0.1"
 anyhow = "1.0.86"
 lazy_static = "1.5.0"
 tracing-chrome = "0.7.2"
+eframe = { version = "0.28.1", features = ["default_fonts", "persistence"] }
+serde = { version = "1.0.204", features = ["derive"] }
+winit = "0.29.15"
 
 [lib]
 crate-type = ["cdylib"]
