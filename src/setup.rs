@@ -33,10 +33,12 @@ pub fn setup() -> anyhow::Result<()> {
         .first()
         .cloned()
         .context("Unable to find any modules")?;
+    
+    info!("Looking into module {}", module.name);
 
     let tick_ptr = unsafe {
         libmem::sig_scan(
-            "48 89 4C 24 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 83 3D E9 F9 8E 06 FF",
+            "48 89 4C 24 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 83 3D",
             module.base,
             module.size,
         ).context("Tick pointer not found")?

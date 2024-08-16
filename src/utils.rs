@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use anyhow::{anyhow, bail, Context};
 use lazy_static::lazy_static;
 use libmem::Trampoline;
-use tracing::error;
+use tracing::{error, info};
 use crate::multiplayer::MultiplayerMod;
 use crate::tracer::Tracer;
 
@@ -35,12 +35,14 @@ lazy_static! {
         let mut m: HashMap<u32, Box<dyn Mod + 'static>> = HashMap::new();
         m.insert(MultiplayerMod::id(), Box::new(MultiplayerMod::default()));
         m.insert(Tracer::id(), Box::new(Tracer::default()));
-        
+
+        info!("Initializing mods...");
         for item in m.values() {
             if let Err(error) = item.init() {
                 error!("Failed to initialize mod: {}", error);
             }
         }
+        info!("We're all set");
         
         m
     };

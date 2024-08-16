@@ -20,7 +20,7 @@ impl Mod for Tracer {
     where
         Self: Sized,
     {
-        0
+        1
     }
 
     fn name(&self) -> &'static str {
@@ -32,6 +32,8 @@ impl Mod for Tracer {
     }
 
     fn init(&self) -> anyhow::Result<()> {
+        info!("Loading tracer mod");
+
         let module = libmem::enum_modules().context("Unable to get modules")?
             .first()
             .cloned()
@@ -52,14 +54,14 @@ impl Mod for Tracer {
         let gnatives: &[FNativeFuncPtr; 0x100] = unsafe { std::mem::transmute(gnatives_address) };
 
 
-        #[instrument(name = "virtual", fields(name = stack.node.name(), owner = context.name()), skip_all)]
+        #[instrument(name = "virtual", level = "trace", fields(name = stack.node.name(), owner = context.name()), skip_all)]
         fn ex_virtual_function(context: &UObject, stack: &FFrame, result: *mut c_void) {
             if let Some(trampoline) = VIRTUAL_FUNCTION_TRAMPOLINE.get() {
                 trampoline.get()(context, stack, result);
             }
         }
 
-        #[instrument(name = "final", fields(name = stack.node.name(), owner = context.name()), skip_all)]
+        #[instrument(name = "final", level = "trace", fields(name = stack.node.name(), owner = context.name()), skip_all)]
         fn ex_final_function(context: &UObject, stack: &FFrame, result: *mut c_void) {
             if let Some(trampoline) = FINAL_FUNCTION_TRAMPOLINE.get() {
                 trampoline.get()(context, stack, result);
@@ -68,15 +70,17 @@ impl Mod for Tracer {
 
 
         unsafe {
+            info!("Hooking virtual function");
             VIRTUAL_FUNCTION_TRAMPOLINE.set(
                 libmem::hook::hook_code(gnatives[0x1B] as Address, ex_virtual_function as Address).context("")?.into()
             ).map_err(|_| anyhow!("Failed to set trampoline"))?;
 
+            info!("Hooking final function");
             FINAL_FUNCTION_TRAMPOLINE.set(
                 libmem::hook::hook_code(gnatives[0x1C] as Address, ex_final_function as Address).context("")?.into()
             ).map_err(|_| anyhow!("Failed to set trampoline"))?;
         }
-
+        info!("Done");
 
         Ok(())
     }

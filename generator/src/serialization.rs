@@ -3,6 +3,7 @@ use proc_macro2::Ident;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
+use anyhow::Context;
 use syn::parse_str;
 
 #[derive(Debug, Deserialize)]
@@ -76,11 +77,11 @@ pub struct FunctionArgument {
 }
 
 impl EnumDump {
-    pub fn from_raw_json<R>(source: R) -> serde_json::Result<Self>
+    pub fn from_raw_json<R>(source: R) -> anyhow::Result<Self>
     where
         R: Read,
     {
-        let raw: RawEnumDump = serde_json::from_reader(source)?;
+        let raw: RawEnumDump = serde_json::from_reader(source).context("Unable to read enum dump")?;
 
         Ok(Self {
             data: raw.data.into_iter().map(|enum_type| {
@@ -142,11 +143,11 @@ impl EnumDump {
 
 
 impl StructDump {
-    pub fn from_raw_json<R>(source: R) -> serde_json::Result<Self>
+    pub fn from_raw_json<R>(source: R) -> anyhow::Result<Self>
     where
         R: Read,
     {
-        let raw: JsonData = serde_json::from_reader(source)?;
+        let raw: JsonData = serde_json::from_reader(source).context("Unable to read struct dump")?;
 
         Ok(StructDump {
             data: raw.data.into_iter().map(|map| {
@@ -198,11 +199,11 @@ impl StructDump {
 }
 
 impl FunctionDump {
-    pub fn from_raw_json<R>(source: R) -> serde_json::Result<Self>
+    pub fn from_raw_json<R>(source: R) -> anyhow::Result<Self>
     where
         R: Read,
     {
-        let raw: FunctionData = serde_json::from_reader(source)?;
+        let raw: FunctionData = serde_json::from_reader(source).context("Unable to read function dump")?;
 
         Ok(FunctionDump {
             data: raw.data.into_iter().map(|map| {

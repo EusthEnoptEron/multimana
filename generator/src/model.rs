@@ -11,10 +11,10 @@ pub struct Manifest {
 }
 
 impl FromStr for Manifest {
-    type Err = ();
+    type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let regex = Regex::new(r"^\[[0-9A-F]+\] \{0x[0-9a-f]+\} (?<type>.+?) (?<package>.+?)(?:\.(?<name>.+))?$").unwrap();
+        let regex = Regex::new(r"^\[[0-9A-F]+\] \{0x[0-9a-f]+\} (?<type>.+?) (?<package>.+?)(?:\.(?<name>.+))?$")?;
         let mut result = Self {
             structs: HashMap::new(),
             packages: HashSet::new(),

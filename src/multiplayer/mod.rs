@@ -37,9 +37,9 @@ impl Mod for MultiplayerMod {
 
     fn init(&self) -> Result<()> {
         info!("Loading multiplayer mod");
-
+        
         let function: &UFunction = UObject::find_function(|it| it.function_flags.contains(EFunctionFlags::BlueprintEvent))
-            .context("Unable to find entry function")?;
+            .context("Unable to find entry function")?; 
 
         fn on_exec_function(context: &UObject, stack: &FFrame, result: *mut c_void) {
             let _ = MultiplayerMod::call_in_place(|this| {

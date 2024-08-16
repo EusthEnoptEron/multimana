@@ -19,4 +19,5 @@ fn main() {
     write!(file, "{}", result).unwrap();
 
     println!("cargo::rerun-if-changed=build.rs");
+    println!("cargo::rerun-if-changed=dump");
 }

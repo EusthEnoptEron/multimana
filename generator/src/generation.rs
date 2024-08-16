@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{Write};
 use std::iter::once;
 use std::path::Path;
+use anyhow::Context;
 use heck::ToSnakeCase;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, TokenStreamExt, ToTokens};
@@ -476,7 +477,7 @@ impl FunctionDefinition {
                 std::mem::swap(#arg, &mut parms.#accessor);
             }
         });
-        
+
         let generics = once("'a".to_string()).chain(
             out_params.iter().filter(|(_, arg)| arg.type_.has_pointers()).map(|(index, _)| {
                 format!("'b{}", index)
@@ -514,19 +515,19 @@ impl FunctionDefinition {
 }
 
 
-pub fn generate_code<P: AsRef<Path>>(base_path: P, excluded_types: &[&str], package_filter: Option<Regex>) -> std::io::Result<TokenStream> {
-    let manifest: Manifest = std::io::read_to_string(File::open(base_path.as_ref().join("GObjects-Dump.txt"))?)?.parse().unwrap();
-    let structs_dump: StructDump = StructDump::from_raw_json(File::open(base_path.as_ref().join("StructsInfo.json"))?)?;
-    let classes_dump: StructDump = StructDump::from_raw_json(File::open(base_path.as_ref().join("ClassesInfo.json"))?)?;
-    let enums_dump: EnumDump = EnumDump::from_raw_json(File::open(base_path.as_ref().join("EnumsInfo.json"))?)?;
-    let offsets: OffsetData = serde_json::from_reader(File::open(base_path.as_ref().join("OffsetsInfo.json"))?)?;
+pub fn generate_code<P: AsRef<Path>>(base_path: P, excluded_types: &[&str], package_filter: Option<Regex>) -> anyhow::Result<TokenStream> {
+    let manifest: Manifest = std::fs::read_to_string(base_path.as_ref().join("GObjects-Dump.txt")).context("ObjectsDump")?.parse().context("Unable to parse manifest")?;
+    let structs_dump: StructDump = StructDump::from_raw_json(File::open(base_path.as_ref().join("StructsInfo.json")).context("StructsInfo")?)?;
+    let classes_dump: StructDump = StructDump::from_raw_json(File::open(base_path.as_ref().join("ClassesInfo.json")).context("ClassesInfo")?)?;
+    let enums_dump: EnumDump = EnumDump::from_raw_json(File::open(base_path.as_ref().join("EnumsInfo.json")).context("EnumsInfo")?)?;
+    let offsets: OffsetData = serde_json::from_reader(File::open(base_path.as_ref().join("OffsetsInfo.json")).context("Offsets")?)?;
 
     let mut lut = ClassLookup::new(manifest, package_filter);
     lut.add_struct_dump(classes_dump);
     lut.add_struct_dump(structs_dump);
     lut.add_enum_dump(enums_dump);
 
-    lut.add_function_dump(FunctionDump::from_raw_json(File::open(base_path.as_ref().join("FunctionsInfo.json"))?)?);
+    lut.add_function_dump(FunctionDump::from_raw_json(File::open(base_path.as_ref().join("FunctionsInfo.json")).context("Functions")?)?);
 
 
     let units = lut.iter_compilation_units()
