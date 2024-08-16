@@ -1,12 +1,11 @@
 #![allow(non_camel_case_types)]
 
-use std::cell::{Cell, LazyCell, OnceCell};
+use std::cell::{LazyCell, OnceCell};
 use std::ffi::c_void;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::mem::size_of;
-use std::ops::{Add, Deref};
-use std::sync::{LazyLock, OnceLock};
+use std::ops::Deref;
+use std::sync::LazyLock;
 
 use bitfield::bitfield;
 use flagset::FlagSet;
@@ -21,10 +20,10 @@ use manasdk_macros::{extend, HasClassObject};
 
 use crate::Offsets::OFFSET_GWORLD;
 
-mod enums;
-mod functions;
 mod collections;
+mod enums;
 mod fields;
+mod functions;
 mod strings;
 
 include!(concat!(env!("OUT_DIR"), "/generated_code.rs"));
@@ -33,28 +32,22 @@ pub trait HasClassObject {
     fn static_class() -> &'static UClass;
 }
 
-static BASE_ADDRESS: LazyLock<usize> = LazyLock::new(|| {
-    unsafe {
-        let handle = windows_sys::Win32::System::LibraryLoader::GetModuleHandleA(std::ptr::null()) as usize;
-        info!("Module handle: {} ({:x})", handle, handle);
+static BASE_ADDRESS: LazyLock<usize> = LazyLock::new(|| unsafe {
+    let handle =
+        windows_sys::Win32::System::LibraryLoader::GetModuleHandleA(std::ptr::null()) as usize;
+    info!("Module handle: {} ({:x})", handle, handle);
 
-        handle
-    }
+    handle
 });
 
 fn resolve_offset<T>(offset: usize) -> *mut T {
     (*BASE_ADDRESS + offset) as *mut T
 }
 
-
-
 /// Pointer to an UObject that might be null
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct UObjectPointer<T: AsRef<UObject>>(
-    *mut T
-);
-
+pub struct UObjectPointer<T: AsRef<UObject>>(*mut T);
 
 impl<U, T> From<&U> for UObjectPointer<T>
 where
@@ -72,7 +65,6 @@ impl<T: AsRef<UObject>> Default for UObjectPointer<T> {
     }
 }
 
-
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct FNumberedData {}
@@ -86,8 +78,7 @@ bitfield! {
 }
 
 #[repr(C)]
-pub union FStringData
-{
+pub union FStringData {
     pub ansi_name: [u8; 0x400],
     pub wide_name: [WideChar; 0x400],
 }
@@ -121,7 +112,6 @@ impl<UClass, T> From<&T> for TSubclassOf<UClass> {
     }
 }
 
-
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct FText {
@@ -135,7 +125,6 @@ pub struct FWeakObjectPtr {
     pub object_index: i32,
     pub object_serial_number: i32,
 }
-
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -198,7 +187,6 @@ pub struct TSoftClassPtr<T> {
     pub pointer: TLazyObjectPtr<FSoftObjectPath>,
 }
 
-
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct UObject {
@@ -247,29 +235,27 @@ pub struct UClass {
     pub _pad_3: [u8; 0x110],
 }
 
-
 pub type FNativeFuncPtr = fn(context: &UObject, stack: &FFrame, result: *mut c_void);
-
 
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct FFrame<'a> {
-    pub pad_0x0000: [u8; 0x10],            // 0x0000
-    pub node: &'a UFunction,              // 0x0010
-    pub object: &'a UObject,              // 0x0018
-    pub code: &'a u8,                     // 0x0020
-    pub locals: &'a c_void,                   // 0x0028
+    pub pad_0x0000: [u8; 0x10], // 0x0000
+    pub node: &'a UFunction,    // 0x0010
+    pub object: &'a UObject,    // 0x0018
+    pub code: &'a u8,           // 0x0020
+    pub locals: &'a c_void,     // 0x0028
     pub most_recent_property: *mut UProperty,
     pub most_recent_property_address: *mut u8,
-    pub primary_data: [u32; 8],            // Execution flow stack for compiled Kismet code
+    pub primary_data: [u32; 8], // Execution flow stack for compiled Kismet code
     pub secondary_data: *mut u8,
     pub array_num: i32,
     pub array_max: i32,
-    pub previous_frame: *mut FFrame<'a>,       // Previous frame on the stack
-    pub out_parms: *mut c_void,                // Contains information on any out parameters
-    pub property_chain_for_compiled_in: *mut UField,  // Property chain for compiled-in functions
+    pub previous_frame: *mut FFrame<'a>, // Previous frame on the stack
+    pub out_parms: *mut c_void,          // Contains information on any out parameters
+    pub property_chain_for_compiled_in: *mut UField, // Property chain for compiled-in functions
     pub current_native_function: *mut UFunction, // Currently executed native function
-    pub b_array_context_failed: bool,      // Indicates if array context failed
+    pub b_array_context_failed: bool,    // Indicates if array context failed
 }
 
 impl<'a> FFrame<'a> {
@@ -287,18 +273,23 @@ impl<'a> FFrame<'a> {
 pub struct UFunction {
     pub function_flags: FlagSet<EFunctionFlags>,
     pub _padding_300: [u8; 0x20usize],
-    pub exec_function: FNativeFuncPtr
+    pub exec_function: FNativeFuncPtr,
 }
-
 
 impl UWorld {
     pub fn get_world() -> Option<&'static UWorld> {
         if Offsets::OFFSET_GWORLD != 0 {
             unsafe {
-                resolve_offset::<*const UWorld>(OFFSET_GWORLD).as_ref()?.as_ref()
+                resolve_offset::<*const UWorld>(OFFSET_GWORLD)
+                    .as_ref()?
+                    .as_ref()
             }
         } else {
-            UEngine::get_engine()?.game_viewport.as_ref()?.world.as_ref()
+            UEngine::get_engine()?
+                .game_viewport
+                .as_ref()?
+                .world
+                .as_ref()
         }
     }
 }
@@ -321,10 +312,10 @@ impl UEngine {
     }
 }
 
-// 
+//
 // mod Params {
 //     use crate::{APlayerController, UObject, UObjectPointer};
-// 
+//
 //     #[repr(C)]
 //     #[derive(Debug, Clone)]
 //     pub struct GameplayStatics_GetPlayerController {
@@ -332,12 +323,12 @@ impl UEngine {
 //         pub player_index: i32,
 //         pub return_value: UObjectPointer<APlayerController>
 //     }
-// 
+//
 //     #[cfg(test)]
 //     mod tests {
 //         use std::mem::offset_of;
 //         use super::*;
-// 
+//
 //         #[test]
 //         fn test_size() {
 //             assert_eq!(size_of::<GameplayStatics_GetPlayerController>(), 0x000018);
@@ -346,27 +337,27 @@ impl UEngine {
 //         }
 //     }
 // }
-// 
+//
 // impl UGameplayStatics {
 //     pub fn get_player_controller(world_context_obj: &UObject, player_index: i32) -> UObjectPointer<APlayerController> {
 //         let class = UClass::find("GameplayStatics")
 //             .expect("Unable to find GameplayStatics");
-// 
+//
 //         let func = class
 //             .find_function_mut("GameplayStatics", "GetPlayerController")
 //             .expect("Unable to find GameplayStatics::GetPlayerController");
-// 
+//
 //         let mut parms = Params::GameplayStatics_GetPlayerController {
 //             world_context_obj,
 //             player_index,
 //             return_value: Default::default(),
 //         };
-// 
+//
 //         let flags = func.function_flags;
 //         func.function_flags |= EFunctionFlags::Native;
 //         class.default_object.as_ref().expect("No default object").process_event(func, &mut parms);
 //         func.function_flags = flags;
-// 
+//
 //         parms.return_value
 //     }
 // }
@@ -387,7 +378,6 @@ mod collection_tests {
         assert_eq!(size_of::<TMap<i32, i32>>(), 0x50, "TMap has a wrong size!");
         assert_eq!(size_of::<FText>(), 24, "FText has a wrong size!");
     }
-
 
     #[test]
     fn test_u_class() {
