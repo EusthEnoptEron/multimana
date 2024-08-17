@@ -303,9 +303,9 @@ impl<'a> FFrame<'a> {
 pub struct UFunction {
     pub function_flags: FlagSet<EFunctionFlags>,
     pub rep_offset: i16,
-    pub num_parms: i8,
-    pub parms_size: i16,
-    pub return_value_offset: i16,
+    pub num_parms: u8,
+    pub parms_size: u16,
+    pub return_value_offset: u16,
     pub _padding_300: [u8; 27],
     pub exec_function: FNativeFuncPtr,
 }

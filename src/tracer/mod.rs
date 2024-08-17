@@ -15,8 +15,10 @@ use manasdk::{
 use std::any::Any;
 use std::ffi::c_void;
 use std::sync::OnceLock;
-use tracing::{info, info_span, instrument, trace_span};
+use tracing::{info, info_span, instrument, trace_span, Span};
+use tracing::field;
 use tracing_subscriber::fmt::format;
+use crate::tracer::to_string::to_string_fproperty;
 
 static VIRTUAL_FUNCTION_TRAMPOLINE: OnceLock<TrampolineWrapper<FNativeFuncPtr>> = OnceLock::new();
 static FINAL_FUNCTION_TRAMPOLINE: OnceLock<TrampolineWrapper<FNativeFuncPtr>> = OnceLock::new();
@@ -77,15 +79,20 @@ fn log_function_call(
             .unwrap_or("Unknown".to_string());
         let params = get_params(function, code_offset, context, stack);
 
-        if is_final {
-            trace_span!(target: "tracer", "fn_final", name = function_name, object = object_name, class = class_name, params).in_scope(|| {
-                fun(context.into(), stack, result);
-            });
+        let span = if is_final {
+            trace_span!(target: "tracer", "fn_final", name = function_name, object = object_name, class = class_name, params, result = field::Empty)
         } else {
-            trace_span!(target: "tracer", "fn_virtual", name = function_name, object = object_name, class = class_name, params).in_scope(|| {
-                fun(context.into(), stack, result);
-            });
-        }
+            trace_span!(target: "tracer", "fn_virtual", name = function_name, object = object_name, class = class_name, params, result = field::Empty)
+        };
+
+        span.in_scope(|| {
+            fun(context.into(), stack, result);
+            if let Some(function) = function.filter(|it| it.return_value_offset != u16::MAX) {
+                if let Some(return_prop) = function.child_properties().find(|it| it.property_flags.contains(EPropertyFlags::ReturnParm)) {
+                    span.record("result", to_string_fproperty(return_prop, result));
+                }
+            }
+        });
     }
 }
 
@@ -236,7 +243,7 @@ impl Mod for Tracer {
                         .into(),
                 )
                 .map_err(|_| anyhow!("Failed to set trampoline"))?;
-            // 
+            //
             // info!("Hooking context function");
             // CONTEXT_TRAMPOLINE
             //     .set(
