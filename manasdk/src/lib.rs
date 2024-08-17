@@ -272,8 +272,26 @@ impl<'a> FFrame<'a> {
 #[derive(Debug, Clone, HasClassObject)]
 pub struct UFunction {
     pub function_flags: FlagSet<EFunctionFlags>,
-    pub _padding_300: [u8; 0x20usize],
+    pub rep_offset: i16,
+    pub num_parms: i8,
+    pub parms_size: i16,
+    pub return_value_offset: i16,
+    pub _padding_300: [u8; 27],
     pub exec_function: FNativeFuncPtr,
+}
+
+#[repr(C)]
+#[extend(UField)]
+#[derive(Debug, Clone, HasClassObject)]
+pub struct UProperty {
+    pub array_dim: i32,
+    pub element_size: i32,
+    pub property_flags: FlagSet<EPropertyFlags>,
+    pub rep_index: u16,
+    pub blueprint_replication_condition: u8,
+    pub offset_internal: i32,
+    
+    pub _padding_200: [u8; 33usize],
 }
 
 impl UWorld {
@@ -391,4 +409,9 @@ mod collection_tests {
 
     #[test]
     fn test_inheritance() {}
+
+    #[test]
+    fn test_UProperty() {
+        assert_eq!(size_of:: < UProperty > (), 112usize);
+    }
 }
