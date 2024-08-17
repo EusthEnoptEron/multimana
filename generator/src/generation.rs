@@ -495,7 +495,7 @@ impl FunctionDefinition {
                 let class = #class;
 
                 let func = class
-                    .find_function_mut(#class_name, #fn_name)
+                    .find_function_mut(#fn_name)
                     .expect(#unable_to_find_function);
 
                 let mut parms = Args(

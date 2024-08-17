@@ -1,12 +1,13 @@
 use std::ffi::c_void;
 use std::fmt::{Display, Formatter};
 use std::iter::once;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use dashmap::DashMap;
 use flagset::FlagSet;
-
-use crate::{BASE_ADDRESS, EClassCastFlags, EObjectFlags, HasClassObject, Offsets, TUObjectArray, UClass, UField, UFunction, UObject, UObjectPointer, UStruct};
+use lazy_static::lazy_static;
+use crate::{BASE_ADDRESS, EClassCastFlags, EObjectFlags, HasClassObject, Offsets, TUObjectArray, UClass, UField, UFunction, UObject, UObjectPointer, UStruct, FName, FProperty};
+use crate::EPropertyAccessCopyType::Struct;
 
 thread_local! {
     static CLASS_CACHE: DashMap<String, Option<&'static UClass>> = DashMap::new();
@@ -28,6 +29,13 @@ impl std::error::Error for PointerError {}
 
 
 impl<T: AsRef<UObject>> UObjectPointer<T> {
+    pub fn is_same<T2>(&self, other: &UObjectPointer<T2>) -> bool
+    where
+        T2: AsRef<UObject>,
+    {
+        other.0 as usize == self.0 as usize
+    }
+
     pub fn as_ref(&self) -> Option<&T> {
         unsafe { self.0.as_ref() }
     }
@@ -80,7 +88,7 @@ impl UObject {
     pub unsafe fn find_object_of_type<T>(required_type: impl Into<FlagSet<EClassCastFlags>> + Copy, predicate: impl Fn(&UObject) -> bool) -> Option<&'static T> {
         Self::find_object(required_type, predicate).map(|it| std::mem::transmute(it))
     }
-    
+
     pub fn find_function(predicate: impl Fn(&UFunction) -> bool) -> Option<&'static UFunction> {
         unsafe {
             Self::find_object_of_type(EClassCastFlags::Function, |it| {
@@ -174,20 +182,25 @@ impl UStruct {
     }
 }
 
-
 impl UClass {
-    pub fn find_function(&self, class_name: &str, func_name: &str) -> Option<&UFunction> {
+    pub fn find_function_by_name(&self, func_name: &FName) -> Option<&UFunction> {
         once::<&UStruct>(self).chain(self.iter_parents())
-            .filter(|parent| parent.name() == class_name)
+            .flat_map(|parent| parent.iter_children())
+            .filter(|child| child.has_type_flag(EClassCastFlags::Function))
+            .find(|child| child.name.comparison_index == func_name.comparison_index && child.name.number == func_name.number)
+            .map(|child| unsafe { std::mem::transmute(child) })
+    }
+
+    pub fn find_function(&self, func_name: &str) -> Option<&UFunction> {
+        once::<&UStruct>(self).chain(self.iter_parents())
             .flat_map(|parent| parent.iter_children())
             .filter(|child| child.has_type_flag(EClassCastFlags::Function))
             .find(|child| child.name() == func_name)
             .map(|child| unsafe { std::mem::transmute(child) })
     }
 
-    pub fn find_function_mut(&self, class_name: &str, func_name: &str) -> Option<&mut UFunction> {
+    pub fn find_function_mut(&self, func_name: &str) -> Option<&mut UFunction> {
         once::<&UStruct>(self).chain(self.iter_parents())
-            .filter(|parent| parent.name() == class_name)
             .flat_map(|parent| parent.iter_children())
             .filter(|child| child.has_type_flag(EClassCastFlags::Function))
             .find(|child| child.name() == func_name)
@@ -207,6 +220,17 @@ impl UClass {
 
             *class.value()
         })
+    }
+}
+
+impl UFunction {
+    pub fn child_properties(&self) -> impl Iterator<Item=&FProperty> {
+        StructTraverser {
+            current: unsafe { (self.child_properties as *const FProperty).as_ref() },
+            get_next: &|prop| {
+                unsafe { (prop.next as *const FProperty).as_ref() }
+            }
+        }
     }
 }
 

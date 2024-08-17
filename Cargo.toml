@@ -20,6 +20,8 @@ eframe = { version = "0.28.1", features = ["default_fonts", "persistence"] }
 serde = { version = "1.0.204", features = ["derive"] }
 winit = "0.29.15"
 concurrent-queue = "2.5.0"
+either = "1.13.0"
+flagset = "0.4.6"
 
 [lib]
 crate-type = ["cdylib"]

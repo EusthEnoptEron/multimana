@@ -2,14 +2,14 @@ use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use flagset::FlagSet;
 use manasdk_macros::extend;
-use crate::{EClassFlags, FName, TArray, TWeakObjectPtr, UClass, UEnum, UFunction, UObject, UObjectPointer, UStruct};
+use crate::{EClassCastFlags, EClassFlags, FName, TArray, TWeakObjectPtr, UClass, UEnum, UFunction, UObject, UObjectPointer, UStruct};
 
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct FFieldClass {
     pub name: FName,
     pub id: u64,
-    pub cast_flags: u64,
+    pub cast_flags: FlagSet<EClassCastFlags>,
     pub class_flags: FlagSet<EClassFlags>,
     pub pad_1c: [u8; 4],
     pub superclass: *mut FFieldClass,

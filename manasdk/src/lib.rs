@@ -46,8 +46,14 @@ fn resolve_offset<T>(offset: usize) -> *mut T {
 
 /// Pointer to an UObject that might be null
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq)]
 pub struct UObjectPointer<T: AsRef<UObject>>(*mut T);
+
+impl<T: AsRef<UObject>> PartialEq for UObjectPointer<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 as usize == other.0 as usize
+    }
+}
 
 impl<U, T> From<&U> for UObjectPointer<T>
 where
@@ -94,6 +100,23 @@ pub struct FNameEntry {
 pub struct FName {
     pub comparison_index: i32,
     pub number: i32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct FScriptName {
+    pub comparison_index: i32,
+    pub display_index: i32,
+    pub number: i32,
+}
+
+impl From<FScriptName> for FName {
+    fn from(value: FScriptName) -> Self {
+        FName {
+            comparison_index: value.comparison_index,
+            number: value.number,
+        }
+    }
 }
 
 #[repr(C)]
@@ -243,12 +266,12 @@ pub struct FFrame<'a> {
     pub pad_0x0000: [u8; 0x10], // 0x0000
     pub node: &'a UFunction,    // 0x0010
     pub object: &'a UObject,    // 0x0018
-    pub code: &'a u8,           // 0x0020
+    pub code: *mut u8,           // 0x0020
     pub locals: &'a c_void,     // 0x0028
     pub most_recent_property: *mut UProperty,
-    pub most_recent_property_address: *mut u8,
+    pub most_recent_property_address: *mut c_void,
     pub primary_data: [u32; 8], // Execution flow stack for compiled Kismet code
-    pub secondary_data: *mut u8,
+    pub secondary_data: *mut c_void,
     pub array_num: i32,
     pub array_max: i32,
     pub previous_frame: *mut FFrame<'a>, // Previous frame on the stack
@@ -292,6 +315,19 @@ pub struct UProperty {
     pub offset_internal: i32,
     
     pub _padding_200: [u8; 33usize],
+}
+
+
+#[repr(C)]
+#[extend(FField)]
+#[derive(Debug, Clone)]
+pub struct FProperty {
+    pub array_dim: i32,
+    pub element_size: i32,
+    pub property_flags: FlagSet<EPropertyFlags>,
+    pub pad_48: [u8; 4],
+    pub offset: i32,
+    pub pad_50: [u8; 40],
 }
 
 impl UWorld {
