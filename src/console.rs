@@ -45,19 +45,18 @@ pub fn open_console() {
 
             // Initialize the tracing subscriber with both console and file logging
             let file_appender = RollingFileAppender::new(Rotation::NEVER, ".", "log_output.log");
-            let (non_blocking_file_appender, file_guard) = tracing_appender::non_blocking(file_appender);
+            let (non_blocking_file_appender, file_guard) =
+                tracing_appender::non_blocking(file_appender);
 
-            let (chrome_layer, chrome_guard) = ChromeLayerBuilder::new()
-                .include_args(true)
-                .build();
-            
-            let (tracer_filter, reload_handle) = reload::Layer::new(Targets::new()
-                .with_target("tracer", Level::ERROR)
-            );
+            let (chrome_layer, chrome_guard) = ChromeLayerBuilder::new().include_args(true).build();
+
+            let (tracer_filter, reload_handle) =
+                reload::Layer::new(Targets::new().with_target("tracer", Level::ERROR));
             let _ = FILE_GUARD.set(file_guard);
             let _ = CHROME_GUARD.set(Mutex::new(chrome_guard));
-
             let _ = TRACER_RELOAD_HANDLE.set(reload_handle);
+            
+            let env_filter = EnvFilter::from_default_env().add_directive(Level::INFO.into());
 
             let fmt_layer = fmt::layer()
                 .with_writer(std::io::stdout)
@@ -72,20 +71,20 @@ pub fn open_console() {
                 .with_timer(ChronoLocal::rfc_3339())
                 .with_span_events(FmtSpan::ENTER)
                 .with_level(true);
-
-            let env_filter = EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into());
+            
+            let normal_layers =  fmt_layer
+                .and_then(file_layer)
+                .with_filter(env_filter)
+                .with_filter(filter::filter_fn(|metadata| metadata.target() != "tracer"));
+            
+            let tracer_layer = chrome_layer.with_filter(tracer_filter);
 
             tracing_subscriber::registry()
-                .with(
-                    fmt_layer.and_then(file_layer)
-                        .with_filter(env_filter)
-                        .with_filter(filter::filter_fn(|metadata| metadata.target() != "tracer"))
-                        .and_then(chrome_layer.with_filter(
-                            tracer_filter
-                        ))
-                )
+                .with(tracer_layer)
+                .with(normal_layers)
                 .init();
+        } else {
+            panic!("Unable to get console handle!");
         }
     }
 }
