@@ -65,6 +65,13 @@ where
     }
 }
 
+impl From<&UObject> for UObjectPointer<UObject>
+{
+    fn from(value: &UObject) -> Self {
+        UObjectPointer(unsafe { std::mem::transmute(value) })
+    }
+}
+
 impl<T: AsRef<UObject>> Default for UObjectPointer<T> {
     fn default() -> Self {
         Self(std::ptr::null_mut())
@@ -258,7 +265,7 @@ pub struct UClass {
     pub _pad_3: [u8; 0x110],
 }
 
-pub type FNativeFuncPtr = fn(context: &UObject, stack: &FFrame, result: *mut c_void);
+pub type FNativeFuncPtr = fn(context: UObjectPointer<UObject>, stack: &FFrame, result: *mut c_void);
 
 #[repr(C)]
 #[derive(Debug, Clone)]

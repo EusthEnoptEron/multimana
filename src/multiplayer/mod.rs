@@ -86,11 +86,11 @@ impl Mod for MultiplayerMod {
 }
 
 impl MultiplayerMod {
-    #[instrument(name = "fn", target="tracer", fields(name = stack.node.name(), owner = context.name()), skip_all)]
+    #[instrument(name = "process", target="tracer", fields(name = stack.node.name(), owner = context.name()), skip_all)]
     fn on_process_event(&self, context: &UObject, stack: &FFrame, result: *mut c_void) {
         self.inner.read().ok().map(|inner| {
             if let Some(exec_function) = &inner.exec_function {
-                exec_function.get()(context, stack, result);
+                exec_function.get()(context.into(), stack, result);
             }
         });
     }

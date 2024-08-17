@@ -3,11 +3,14 @@ use std::fmt::{Display, Formatter};
 use std::iter::once;
 use std::sync::{Arc, LazyLock};
 
+use crate::EPropertyAccessCopyType::Struct;
+use crate::{
+    EClassCastFlags, EObjectFlags, FName, FProperty, HasClassObject, Offsets, TUObjectArray,
+    UClass, UField, UFunction, UObject, UObjectPointer, UStruct, BASE_ADDRESS,
+};
 use dashmap::DashMap;
 use flagset::FlagSet;
 use lazy_static::lazy_static;
-use crate::{BASE_ADDRESS, EClassCastFlags, EObjectFlags, HasClassObject, Offsets, TUObjectArray, UClass, UField, UFunction, UObject, UObjectPointer, UStruct, FName, FProperty};
-use crate::EPropertyAccessCopyType::Struct;
 
 thread_local! {
     static CLASS_CACHE: DashMap<String, Option<&'static UClass>> = DashMap::new();
@@ -26,7 +29,6 @@ impl Display for PointerError {
 }
 
 impl std::error::Error for PointerError {}
-
 
 impl<T: AsRef<UObject>> UObjectPointer<T> {
     pub fn is_same<T2>(&self, other: &UObjectPointer<T2>) -> bool
@@ -55,13 +57,21 @@ impl<T: AsRef<UObject>> UObjectPointer<T> {
     pub fn try_get<'a>(self) -> Result<&'a mut T, PointerError> {
         unsafe { self.0.as_mut() }.ok_or(PointerError::NullPointer)
     }
+
+    pub fn name(&self) -> String {
+        if let Some(obj) = self.as_ref() {
+            obj.as_ref().name()
+        } else {
+            "NULL".into()
+        }
+    }
 }
 
-
-static UOBJECT: LazyLock<&'static TUObjectArray> = LazyLock::new(|| {
-    unsafe { ((*BASE_ADDRESS + Offsets::OFFSET_GOBJECTS) as *const TUObjectArray).as_ref().expect("Unable to find GObjects") }
+static UOBJECT: LazyLock<&'static TUObjectArray> = LazyLock::new(|| unsafe {
+    ((*BASE_ADDRESS + Offsets::OFFSET_GOBJECTS) as *const TUObjectArray)
+        .as_ref()
+        .expect("Unable to find GObjects")
 });
-
 
 impl UObject {
     pub fn all() -> &'static TUObjectArray {
@@ -72,20 +82,25 @@ impl UObject {
         let class = T::static_class();
 
         if self.is_a(class) {
-            Some(unsafe {
-                std::mem::transmute(self as *const Self)
-            })
+            Some(unsafe { std::mem::transmute(self as *const Self) })
         } else {
             None
         }
     }
 
-    pub fn find_object(required_type: impl Into<FlagSet<EClassCastFlags>> + Copy, predicate: impl Fn(&UObject) -> bool) -> Option<&'static UObject> {
-        Self::all().iter()
+    pub fn find_object(
+        required_type: impl Into<FlagSet<EClassCastFlags>> + Copy,
+        predicate: impl Fn(&UObject) -> bool,
+    ) -> Option<&'static UObject> {
+        Self::all()
+            .iter()
             .find(|it| it.has_type_flag(required_type) && predicate(it))
     }
 
-    pub unsafe fn find_object_of_type<T>(required_type: impl Into<FlagSet<EClassCastFlags>> + Copy, predicate: impl Fn(&UObject) -> bool) -> Option<&'static T> {
+    pub unsafe fn find_object_of_type<T>(
+        required_type: impl Into<FlagSet<EClassCastFlags>> + Copy,
+        predicate: impl Fn(&UObject) -> bool,
+    ) -> Option<&'static T> {
         Self::find_object(required_type, predicate).map(|it| std::mem::transmute(it))
     }
 
@@ -104,7 +119,10 @@ impl UObject {
     /// Returns the name of this object in the format 'Class Package.Outer.Object'
     pub fn full_name(&self) -> String {
         if let Some(class) = self.class.as_ref() {
-            let mut hierarchy = once(self).chain(self.iter_outers()).map(|it| it.name()).collect::<Vec<_>>();
+            let mut hierarchy = once(self)
+                .chain(self.iter_outers())
+                .map(|it| it.name())
+                .collect::<Vec<_>>();
             hierarchy.reverse();
 
             format!("{} {}", class.name(), hierarchy.join("."))
@@ -114,23 +132,27 @@ impl UObject {
     }
 
     pub fn is_a(&self, class: &UClass) -> bool {
-        self.class.as_ref().map(|it| it.is_subclass_of(class)).unwrap_or_default()
+        self.class
+            .as_ref()
+            .map(|it| it.is_subclass_of(class))
+            .unwrap_or_default()
     }
 }
 
-type ProcessEventFn = extern fn(*const UObject, *const UFunction, *mut c_void);
+type ProcessEventFn = extern "C" fn(*const UObject, *const UFunction, *mut c_void);
 
 impl UObject {
     pub fn has_type_flag(&self, flags: impl Into<FlagSet<EClassCastFlags>>) -> bool {
-        self.class.as_ref().map(|it| it.cast_flags.contains(flags)).unwrap_or_default()
+        self.class
+            .as_ref()
+            .map(|it| it.cast_flags.contains(flags))
+            .unwrap_or_default()
     }
 
-    pub fn iter_outers(&self) -> impl Iterator<Item=&UObject> {
+    pub fn iter_outers(&self) -> impl Iterator<Item = &UObject> {
         StructTraverser {
             current: self.outer.as_ref(),
-            get_next: &|el| {
-                el.outer.as_ref()
-            },
+            get_next: &|el| el.outer.as_ref(),
         }
     }
 
@@ -139,7 +161,7 @@ impl UObject {
         let v_table = self.v_table as *const *const c_void;
 
         // Safely obtain the function pointer from the vtable.
-        // v_table.add(Offsets::INDEX_PROCESSEVENT) returns a pointer to the function pointer, 
+        // v_table.add(Offsets::INDEX_PROCESSEVENT) returns a pointer to the function pointer,
         // so we dereference it to get the actual function pointer.
         let fn_ptr = unsafe {
             let process_event_ptr = *v_table.add(Offsets::INDEX_PROCESSEVENT);
@@ -158,41 +180,44 @@ impl UObject {
 
 impl UStruct {
     /// Iterate though the parents of this struct.
-    pub fn iter_parents(&self) -> impl Iterator<Item=&UStruct> {
+    pub fn iter_parents(&self) -> impl Iterator<Item = &UStruct> {
         StructTraverser {
             current: self.super_.as_ref(),
-            get_next: &|el| {
-                el.super_.as_ref()
-            },
+            get_next: &|el| el.super_.as_ref(),
         }
     }
 
     /// Iterate through the child fields of this struct.
-    pub fn iter_children(&self) -> impl Iterator<Item=&UField> {
+    pub fn iter_children(&self) -> impl Iterator<Item = &UField> {
         StructTraverser {
             current: self.children.as_ref(),
-            get_next: &|el| {
-                el.next.as_ref()
-            },
+            get_next: &|el| el.next.as_ref(),
         }
     }
 
     pub fn is_subclass_of(&self, base: &UStruct) -> bool {
-        once(self).chain(self.iter_parents()).any(|it| std::ptr::eq(it, base))
+        once(self)
+            .chain(self.iter_parents())
+            .any(|it| std::ptr::eq(it, base))
     }
 }
 
 impl UClass {
     pub fn find_function_by_name(&self, func_name: &FName) -> Option<&UFunction> {
-        once::<&UStruct>(self).chain(self.iter_parents())
+        once::<&UStruct>(self)
+            .chain(self.iter_parents())
             .flat_map(|parent| parent.iter_children())
             .filter(|child| child.has_type_flag(EClassCastFlags::Function))
-            .find(|child| child.name.comparison_index == func_name.comparison_index && child.name.number == func_name.number)
+            .find(|child| {
+                child.name.comparison_index == func_name.comparison_index
+                    && child.name.number == func_name.number
+            })
             .map(|child| unsafe { std::mem::transmute(child) })
     }
 
     pub fn find_function(&self, func_name: &str) -> Option<&UFunction> {
-        once::<&UStruct>(self).chain(self.iter_parents())
+        once::<&UStruct>(self)
+            .chain(self.iter_parents())
             .flat_map(|parent| parent.iter_children())
             .filter(|child| child.has_type_flag(EClassCastFlags::Function))
             .find(|child| child.name() == func_name)
@@ -200,22 +225,18 @@ impl UClass {
     }
 
     pub fn find_function_mut(&self, func_name: &str) -> Option<&mut UFunction> {
-        once::<&UStruct>(self).chain(self.iter_parents())
+        once::<&UStruct>(self)
+            .chain(self.iter_parents())
             .flat_map(|parent| parent.iter_children())
             .filter(|child| child.has_type_flag(EClassCastFlags::Function))
             .find(|child| child.name() == func_name)
             .map(|child| unsafe { std::mem::transmute(child as *const UField) })
     }
 
-
     pub fn find(name: &str) -> Option<&'static UClass> {
         CLASS_CACHE.with(|map| {
-            let class = map.entry(name.to_string()).or_insert_with(|| {
-                unsafe {
-                    UObject::find_object_of_type(EClassCastFlags::Class, |obj| {
-                        obj.name() == name
-                    })
-                }
+            let class = map.entry(name.to_string()).or_insert_with(|| unsafe {
+                UObject::find_object_of_type(EClassCastFlags::Class, |obj| obj.name() == name)
             });
 
             *class.value()
@@ -224,16 +245,13 @@ impl UClass {
 }
 
 impl UFunction {
-    pub fn child_properties(&self) -> impl Iterator<Item=&FProperty> {
+    pub fn child_properties(&self) -> impl Iterator<Item = &FProperty> {
         StructTraverser {
             current: unsafe { (self.child_properties as *const FProperty).as_ref() },
-            get_next: &|prop| {
-                unsafe { (prop.next as *const FProperty).as_ref() }
-            }
+            get_next: &|prop| unsafe { (prop.next as *const FProperty).as_ref() },
         }
     }
 }
-
 
 struct StructTraverser<'a, 'b, T, Delegate: Fn(&T) -> Option<&T>> {
     current: Option<&'b T>,

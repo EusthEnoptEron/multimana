@@ -1,19 +1,32 @@
-mod to_string;
 mod kismet_tracing;
+mod to_string;
 
+use crate::tracer::kismet_tracing::get_params;
 use crate::utils::{Mod, TrampolineWrapper};
 use anyhow::{anyhow, Context};
 use libmem::Address;
-use manasdk::{EPropertyFlags, FFrame, FName, FNativeFuncPtr, FRotator, FScriptName, FString, FVector, FVector2D, UBoolProperty, UByteProperty, UClass, UDoubleProperty, UEnum, UEnumProperty, UFloatProperty, UFunction, UInt64Property, UInt8Property, UIntProperty, UNameProperty, UObject, UObjectProperty, UProperty, UScriptStruct, UStrProperty, UStructProperty, UUInt32Property, UUInt64Property};
+use manasdk::{
+    EPropertyFlags, FFrame, FName, FNativeFuncPtr, FRotator, FScriptName, FString, FVector,
+    FVector2D, UBoolProperty, UByteProperty, UClass, UDoubleProperty, UEnum, UEnumProperty,
+    UFloatProperty, UFunction, UInt64Property, UInt8Property, UIntProperty, UNameProperty, UObject,
+    UObjectPointer, UObjectProperty, UProperty, UScriptStruct, UStrProperty, UStructProperty,
+    UUInt32Property, UUInt64Property,
+};
 use std::any::Any;
 use std::ffi::c_void;
 use std::sync::OnceLock;
 use tracing::{info, info_span, instrument, trace_span};
 use tracing_subscriber::fmt::format;
-use crate::tracer::kismet_tracing::get_params;
 
 static VIRTUAL_FUNCTION_TRAMPOLINE: OnceLock<TrampolineWrapper<FNativeFuncPtr>> = OnceLock::new();
 static FINAL_FUNCTION_TRAMPOLINE: OnceLock<TrampolineWrapper<FNativeFuncPtr>> = OnceLock::new();
+static LOCAL_FINAL_FUNCTION_TRAMPOLINE: OnceLock<TrampolineWrapper<FNativeFuncPtr>> =
+    OnceLock::new();
+static LOCAL_VIRTUAL_FUNCTION_TRAMPOLINE: OnceLock<TrampolineWrapper<FNativeFuncPtr>> =
+    OnceLock::new();
+static MATH_TRAMPOLINE: OnceLock<TrampolineWrapper<FNativeFuncPtr>> = OnceLock::new();
+static CONTEXT_TRAMPOLINE: OnceLock<TrampolineWrapper<FNativeFuncPtr>> = OnceLock::new();
+
 static GNATIVES: OnceLock<&'static [FNativeFuncPtr; 0x100]> = OnceLock::new();
 
 #[derive(Default)]
@@ -25,37 +38,56 @@ fn log_function_call(
     stack: &FFrame,
     result: *mut c_void,
     fun: FNativeFuncPtr,
-    is_final: bool
+    is_final: bool,
 ) {
     unsafe {
         let (function, code_offset) = if is_final {
-            ((stack.code as *const *const UFunction).read_unaligned().as_ref(), size_of::<usize>())
+            (
+                (stack.code as *const *const UFunction)
+                    .read_unaligned()
+                    .as_ref(),
+                size_of::<usize>(),
+            )
         } else {
-            (if let Some(function_name) = (stack.code as *const FScriptName).as_ref()
-                .map(|it| it.clone().into()) {
-                context.class.as_ref().unwrap().find_function_by_name(&function_name)
-            } else {
-                None
-            }, size_of::<FScriptName>())
+            (
+                if let Some(function_name) = (stack.code as *const FScriptName)
+                    .as_ref()
+                    .map(|it| it.clone().into())
+                {
+                    context
+                        .class
+                        .as_ref()
+                        .unwrap()
+                        .find_function_by_name(&function_name)
+                } else {
+                    None
+                },
+                size_of::<FScriptName>(),
+            )
         };
 
-        let function_name = function.map(|it| it.name()).unwrap_or("Unknown".to_string());
+        let function_name = function
+            .map(|it| it.name())
+            .unwrap_or("Unknown".to_string());
         let object_name = context.name();
-        let class_name = context.class.as_ref().map(|it| it.name()).unwrap_or("Unknown".to_string());
+        let class_name = context
+            .class
+            .as_ref()
+            .map(|it| it.name())
+            .unwrap_or("Unknown".to_string());
         let params = get_params(function, code_offset, context, stack);
 
         if is_final {
             trace_span!(target: "tracer", "fn_final", name = function_name, object = object_name, class = class_name, params).in_scope(|| {
-                fun(context, stack, result);
+                fun(context.into(), stack, result);
             });
         } else {
             trace_span!(target: "tracer", "fn_virtual", name = function_name, object = object_name, class = class_name, params).in_scope(|| {
-                fun(context, stack, result);
+                fun(context.into(), stack, result);
             });
         }
     }
 }
-
 
 impl Mod for Tracer {
     fn id() -> u32
@@ -89,7 +121,7 @@ impl Mod for Tracer {
                 module.base,
                 module.size,
             )
-                .context("Unable to find gnatives")?
+            .context("Unable to find gnatives")?
         };
 
         let offset: &u32 = unsafe { std::mem::transmute(step_fn + 12) };
@@ -101,19 +133,49 @@ impl Mod for Tracer {
 
         #[instrument(name = "virtual", target = "tracer", level = "trace", fields(name = stack.node.name(), owner = context.name()
         ), skip_all)]
-        fn ex_virtual_function(context: &UObject, stack: &FFrame, result: *mut c_void) {
+        fn ex_virtual_function(context: UObjectPointer<UObject>, stack: &FFrame, result: *mut c_void) {
             if let Some(trampoline) = VIRTUAL_FUNCTION_TRAMPOLINE.get() {
-                log_function_call(context, stack, result, trampoline.get(), false);
-                //trampoline.get()(context, stack, result);
+                log_function_call(context.as_ref().unwrap(), stack, result, trampoline.get(), false);
             }
         }
 
         #[instrument(name = "final", target = "tracer", fields(name = stack.node.name(), owner = context.name()
         ), skip_all)]
-        fn ex_final_function(context: &UObject, stack: &FFrame, result: *mut c_void) {
+        fn ex_final_function(context: UObjectPointer<UObject>, stack: &FFrame, result: *mut c_void) {
             if let Some(trampoline) = FINAL_FUNCTION_TRAMPOLINE.get() {
-                log_function_call(context, stack, result, trampoline.get(), true);
-//                trampoline.get()(context, stack, result);
+                log_function_call(context.as_ref().unwrap(), stack, result, trampoline.get(), true);
+            }
+        }
+
+        #[instrument(name = "virtual_local", target = "tracer", level = "trace", fields(name = stack.node.name(), owner = context.name()
+        ), skip_all)]
+        fn ex_local_virtual_function(context: UObjectPointer<UObject>, stack: &FFrame, result: *mut c_void) {
+            if let Some(trampoline) = LOCAL_VIRTUAL_FUNCTION_TRAMPOLINE.get() {
+                log_function_call(context.as_ref().unwrap(), stack, result, trampoline.get(), false);
+            }
+        }
+
+        #[instrument(name = "final_local", target = "tracer", fields(name = stack.node.name(), owner = context.name()
+        ), skip_all)]
+        fn ex_local_final_function(context: UObjectPointer<UObject>, stack: &FFrame, result: *mut c_void) {
+            if let Some(trampoline) = LOCAL_FINAL_FUNCTION_TRAMPOLINE.get() {
+                log_function_call(context.as_ref().unwrap(), stack, result, trampoline.get(), true);
+            }
+        }
+
+        #[instrument(name = "math", target = "tracer", fields(name = stack.node.name(), owner = context.name()
+        ), skip_all)]
+        fn ex_math(context: UObjectPointer<UObject>, stack: &FFrame, result: *mut c_void) {
+            if let Some(trampoline) = MATH_TRAMPOLINE.get() {
+                log_function_call(context.as_ref().unwrap(), stack, result, trampoline.get(), true);
+            }
+        }
+
+        #[instrument(name = "context", target = "tracer", fields(name = stack.node.name(), owner = context.name()
+        ), skip_all)]
+        fn ex_context(context: UObjectPointer<UObject>, stack: &FFrame, result: *mut c_void) {
+            if let Some(trampoline) = CONTEXT_TRAMPOLINE.get() {
+                trampoline.get()(context, stack, result);
             }
         }
 
@@ -125,8 +187,8 @@ impl Mod for Tracer {
                         gnatives[0x1B] as Address,
                         ex_virtual_function as Address,
                     )
-                        .context("")?
-                        .into(),
+                    .context("")?
+                    .into(),
                 )
                 .map_err(|_| anyhow!("Failed to set trampoline"))?;
 
@@ -137,10 +199,52 @@ impl Mod for Tracer {
                         gnatives[0x1C] as Address,
                         ex_final_function as Address,
                     )
+                    .context("")?
+                    .into(),
+                )
+                .map_err(|_| anyhow!("Failed to set trampoline"))?;
+
+            info!("Hooking local final function");
+            LOCAL_FINAL_FUNCTION_TRAMPOLINE
+                .set(
+                    libmem::hook::hook_code(
+                        gnatives[0x46] as Address,
+                        ex_local_final_function as Address,
+                    )
+                    .context("")?
+                    .into(),
+                )
+                .map_err(|_| anyhow!("Failed to set trampoline"))?;
+
+            info!("Hooking local virtual function");
+            LOCAL_VIRTUAL_FUNCTION_TRAMPOLINE
+                .set(
+                    libmem::hook::hook_code(
+                        gnatives[0x45] as Address,
+                        ex_local_virtual_function as Address,
+                    )
+                    .context("")?
+                    .into(),
+                )
+                .map_err(|_| anyhow!("Failed to set trampoline"))?;
+
+            info!("Hooking math function");
+            MATH_TRAMPOLINE
+                .set(
+                    libmem::hook::hook_code(gnatives[0x68] as Address, ex_math as Address)
                         .context("")?
                         .into(),
                 )
                 .map_err(|_| anyhow!("Failed to set trampoline"))?;
+            // 
+            // info!("Hooking context function");
+            // CONTEXT_TRAMPOLINE
+            //     .set(
+            //         libmem::hook::hook_code(gnatives[0x19] as Address, ex_context as Address)
+            //             .context("")?
+            //             .into(),
+            //     )
+            //     .map_err(|_| anyhow!("Failed to set trampoline"))?;
         }
         info!("Done");
 

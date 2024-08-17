@@ -1,8 +1,7 @@
 use std::ffi::c_void;
-use tracing::info;
-use manasdk::{EPropertyFlags, FFrame, UFunction, UObject, UProperty};
+use manasdk::{EPropertyFlags, FFrame, UFunction, UObject};
 use crate::tracer::{EX_END_FUNCTION_PARAMS, GNATIVES};
-use crate::tracer::to_string::{to_string, to_string_fproperty};
+use crate::tracer::to_string::{to_string_fproperty};
 
 pub fn get_params(
     function: Option<&UFunction>,
@@ -46,7 +45,7 @@ pub fn get_params(
                 if property.property_flags.contains(EPropertyFlags::OutParm) {
                     // Log::info("Out {:p}", b);
                     GNATIVES.get()?[b as usize](
-                        &new_stack.object,
+                        new_stack.object.into(),
                         &new_stack,
                         std::ptr::null_mut(),
                     );
@@ -89,7 +88,7 @@ pub fn get_params(
                     }
 
                     // Log::info("b:{:p} ({}) ({:p}) ({})", addr, (*property).array_dim * (*property).element_size, MultiplayerMod::GNATIVES[b as usize], (*property).get_name());
-                    GNATIVES.get()?[b as usize](&new_stack.object, &new_stack, addr);
+                    GNATIVES.get()?[b as usize](new_stack.object.into(), &new_stack, addr);
                     params.push_str(to_string_fproperty(property, addr).as_str());
                     params.push_str(", ");
                     // Log::info("a:ok");
