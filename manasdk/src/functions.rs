@@ -3,11 +3,7 @@ use std::fmt::{Display, Formatter};
 use std::iter::once;
 use std::sync::{Arc, LazyLock};
 
-use crate::EPropertyAccessCopyType::Struct;
-use crate::{
-    EClassCastFlags, EObjectFlags, FName, FProperty, HasClassObject, Offsets, TUObjectArray,
-    UClass, UField, UFunction, UObject, UObjectPointer, UStruct, BASE_ADDRESS,
-};
+use crate::{offsets, EClassCastFlags, EObjectFlags, FName, FProperty, HasClassObject, TUObjectArray, UClass, UField, UFunction, UObject, UObjectPointer, UStruct, BASE_ADDRESS};
 use dashmap::DashMap;
 use flagset::FlagSet;
 use lazy_static::lazy_static;
@@ -68,7 +64,7 @@ impl<T: AsRef<UObject>> UObjectPointer<T> {
 }
 
 static UOBJECT: LazyLock<&'static TUObjectArray> = LazyLock::new(|| unsafe {
-    ((*BASE_ADDRESS + Offsets::OFFSET_GOBJECTS) as *const TUObjectArray)
+    ((*BASE_ADDRESS + offsets::OFFSET_GOBJECTS) as *const TUObjectArray)
         .as_ref()
         .expect("Unable to find GObjects")
 });
@@ -164,7 +160,7 @@ impl UObject {
         // v_table.add(Offsets::INDEX_PROCESSEVENT) returns a pointer to the function pointer,
         // so we dereference it to get the actual function pointer.
         let fn_ptr = unsafe {
-            let process_event_ptr = *v_table.add(Offsets::INDEX_PROCESSEVENT);
+            let process_event_ptr = *v_table.add(offsets::INDEX_PROCESSEVENT);
             std::mem::transmute::<*const c_void, ProcessEventFn>(process_event_ptr)
         };
 

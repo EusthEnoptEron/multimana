@@ -2,7 +2,8 @@ use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use flagset::FlagSet;
 use manasdk_macros::extend;
-use crate::{EClassCastFlags, EClassFlags, FName, TArray, TWeakObjectPtr, UClass, UEnum, UFunction, UObject, UObjectPointer, UStruct};
+use crate::{EClassCastFlags, EClassFlags, FName, TArray, TWeakObjectPtr, UClass, UFunction, UObject, UObjectPointer, UStruct};
+use crate::core_u_object::UEnum;
 
 #[repr(C)]
 #[derive(Debug, Clone)]

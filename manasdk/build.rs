@@ -2,11 +2,14 @@ use regex::Regex;
 use rust_format::{Formatter, PrettyPlease};
 use std::fs::File;
 use std::io::Write;
+use std::path::PathBuf;
 
 fn main() {
-    let out_dir = std::env::var("OUT_DIR").unwrap();
+    let out_dir: PathBuf = std::env::var("OUT_DIR").unwrap().try_into().unwrap();
+    let output_path = out_dir.join("generated_code");
 
-    let output_path = format!("{}/generated_code.rs", out_dir);
+    std::fs::create_dir_all(&output_path).unwrap();
+
     let exclusions = vec![
         "UObject",
         "UClass",
@@ -31,16 +34,31 @@ fn main() {
     let definitions = generator::generate_code(
         "dump",
         &exclusions,
-        Some(Regex::new(r#"CoreUObject|Engine"#).unwrap()),
+        Some(Regex::new(r#"core_u_object|engine|x21"#).unwrap()),
     )
     .expect("Failed to generate code");
 
-    let result = PrettyPlease::default()
-        .format_str(definitions)
-        .expect("Failed to format code");
+    let modules: Vec<_> = definitions.iter().filter_map(|(package, _)| package.clone()).collect();
 
-    let mut file = File::create(output_path).expect("Failed to create output file");
-    write!(file, "{}", result).unwrap();
+    for (package, mut def) in definitions {
+        if package == None {
+            let mut imports = String::new();
+            for module in modules.iter() {
+                imports.push_str(format!("pub mod {};", module).as_str());
+            }
+
+            def.insert_str(0, imports.as_str());
+        }
+
+        let module = package.unwrap_or("lib".to_string());
+        let path = output_path.join(format!("{}.rs", module));
+
+        let result = PrettyPlease::default()
+            .format_str(def)
+            .expect(format!("Failed to format code: {}", module).as_str());
+        let mut file = File::create(path).expect("Failed to create output file");
+        write!(file, "{}", result).unwrap();
+    }
 
     println!("cargo::rerun-if-changed=build.rs");
     println!("cargo::rerun-if-changed=dump");

@@ -26,6 +26,10 @@ trait ToRustCode: Send + Sync {
     fn generate_impl(&self, context: &ClassLookup) -> Option<TokenStream>;
 }
 
+trait ToTokensWithContext {
+    fn to_tokens(&self, context: &ClassLookup) -> TokenStream;
+}
+
 struct TypeIterator<'a> {
     lookup: &'a ClassLookup,
     tracked_types: HashSet<&'a str>,
@@ -137,21 +141,30 @@ impl TypeSignature {
                 .is_some()
     }
 
-    fn to_tokens_with(&self, pointer_handling: PointerHandling) -> TokenStream {
+    fn to_tokens_with(&self, pointer_handling: PointerHandling, context: &ClassLookup) -> TokenStream {
         let name_ident = format_ident!("{}", self.name);
-        let name = if self.kind == FieldKind::Enum && self.name.ends_with("Flags") {
-            quote!(::flagset::FlagSet<#name_ident>)
-        } else {
-            quote!(#name_ident)
-        };
+        let package = match self.kind {
+            FieldKind::Struct => { context.get_struct(self.name.as_str()).and_then(|it| it.package.clone())  }
+            FieldKind::Class => { context.get_struct(self.name.as_str()).and_then(|it| it.package.clone()) }
+            FieldKind::Primitive => { None }
+            FieldKind::Enum => { context.get_enum(self.name.as_str()).and_then(|it| it.package.clone()) }
+        }.map(|it | {
+            let ident = format_ident!("{}", it);
+            quote! { crate:: #ident:: }
+        });
 
+        let name = if self.kind == FieldKind::Enum && self.name.ends_with("Flags") {
+            quote!(::flagset::FlagSet<#package #name_ident>)
+        } else {
+            quote!(#package #name_ident)
+        };
         let typed_stream = if self.generics.is_empty() {
             quote!(#name)
         } else {
             let generics = self
                 .generics
                 .iter()
-                .map(|it| it.to_tokens_with(pointer_handling.clone()));
+                .map(|it| it.to_tokens_with(pointer_handling.clone(), context));
             quote!(#name <#(#generics),*>)
         };
 
@@ -185,19 +198,20 @@ impl TypeSignature {
     }
 }
 
-impl ToTokens for TypeSignature {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        tokens.append_all(self.to_tokens_with(PointerHandling::Wrapper));
+impl ToTokensWithContext for TypeSignature {
+    fn to_tokens(&self, context: &ClassLookup) -> TokenStream {
+        self.to_tokens_with(PointerHandling::Wrapper, context)
     }
 }
 
-impl ToTokens for FieldDefinition {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
+impl ToTokensWithContext for FieldDefinition {
+    fn to_tokens(&self, context: &ClassLookup) -> TokenStream {
         let name = format_ident!("{}", self.name);
+        let signature = self.signature.to_tokens(context);
 
-        tokens.append_all(quote! {
-            pub #name: #(self.signature)
-        })
+        quote! {
+            pub #name: #signature
+        }
     }
 }
 
@@ -295,7 +309,7 @@ impl StructDefinition {
             let field_name = as_identifier(field.name.as_str());
 
             offset = offset + field.size;
-            let field_type = &field.signature;
+            let field_type = &field.signature.to_tokens(context);
 
             target.push(quote!(pub #field_name: #field_type));
         }
@@ -325,8 +339,13 @@ impl ToRustCode for StructDefinition {
 
         let extend_statement = self.parents.first().map(|parent| {
             let parent_ident = format_ident!("{}", parent);
+            let package = context.get_struct(parent.as_str())
+                .and_then(|it| it.package.clone())
+                .map(|it| format_ident!("{}", it))
+                .map(|it| quote!(#it ::));
+
             quote! {
-                #[extend(#parent_ident)]
+                #[extend(crate:: #package #parent_ident)]
             }
         });
 
@@ -363,7 +382,7 @@ impl ToRustCode for StructDefinition {
 
     fn generate_impl(&self, context: &ClassLookup) -> Option<TokenStream> {
         let name = format_ident!("{}", self.name);
-        let functions = self.functions.iter().map(|it| it.to_tokens(self));
+        let functions = self.functions.iter().map(|it| it.to_tokens(self, context));
 
         Some(quote! {
             impl #name {
@@ -374,8 +393,8 @@ impl ToRustCode for StructDefinition {
 }
 
 impl FunctionDefinition {
-    fn to_tokens(&self, owner: &StructDefinition) -> TokenStream {
-        let fn_id = format_ident!("{}", self.name.to_snake_case());
+    fn to_tokens(&self, owner: &StructDefinition, context: &ClassLookup) -> TokenStream {
+        let fn_id = as_identifier(self.name.as_str());
 
         let return_value = if self.return_value.is_pointer || self.return_value.name != "void" {
             Some(&self.return_value)
@@ -407,7 +426,7 @@ impl FunctionDefinition {
                 let type_stream = type_.to_tokens_with(PointerHandling::Borrow {
                     mutable: false,
                     lifetime: None,
-                });
+                }, context);
 
                 if it.is_out_param {
                     quote! {
@@ -431,17 +450,20 @@ impl FunctionDefinition {
                     let type_stream = it.type_.to_tokens_with(PointerHandling::Borrow {
                         mutable: false,
                         lifetime: Some(generic_name),
-                    });
+                    }, context);
                     quote!(#type_stream)
                 } else {
                     let type_stream = it.type_.to_tokens_with(PointerHandling::Borrow {
                         mutable: false,
                         lifetime: Some("'a".into()),
-                    });
+                    }, context);
                     quote!(#type_stream)
                 }
             })
-            .chain(return_value.cloned().map(|it| quote!(#it)))
+            .chain(return_value.cloned().map(|it| {
+                let tokens = it.to_tokens(context);
+                quote!(#tokens)
+            }))
             .chain(once(quote! { std::marker::PhantomData<&'a u8> }));
 
         // Only the names for filling the struct
@@ -465,7 +487,10 @@ impl FunctionDefinition {
         let unable_to_find_class = format!("Unable to find {}", &owner.name[1..]);
         let unable_to_find_function = format!("Unable to find {}::{}", &owner.name[1..], self.name);
 
-        let return_type = return_value.map(|it| quote!(-> #it));
+        let return_type = return_value.map(|it| {
+            let tokens = it.to_tokens(context);
+            quote!(-> #tokens)
+        });
 
         let return_statement = return_value.map(|it| {
             let size: syn::Index = self.arguments.len().into();
@@ -583,18 +608,16 @@ pub fn generate_code<P: AsRef<Path>>(
         File::open(base_path.as_ref().join("FunctionsInfo.json")).context("Functions")?,
     )?);
 
-    let units = lut
+    let mut grouped: HashMap<_, Vec<&dyn ToRustCode>> = lut
         .iter_compilation_units()
         .filter(|it| !excluded_types.contains(&it.name()))
-        .collect::<Vec<_>>();
-
-    let grouped: HashMap<_, Vec<&dyn ToRustCode>> = units
-        .iter()
         .into_grouping_map_by(|it| it.package())
         .collect();
 
-    let definitions: HashMap<_, _> = grouped.par_iter().map(|(package, values)| {
-        let code = values.iter().map(|it| {
+    grouped.entry(None).or_insert(Vec::new());
+
+    let definitions: HashMap<_, _> = grouped.par_iter().map(|(package, structs)| {
+        let code = structs.iter().map(|it| {
             let code = it.generate_code(&lut);
             let implem = it.generate_impl(&lut);
 
@@ -605,14 +628,32 @@ pub fn generate_code<P: AsRef<Path>>(
             }
         });
 
-        let tests = values.iter().filter_map(|it| it.generate_test(&lut));
-        let offset_constants = offsets.data.iter().map(|offset| {
-            let ident = format_ident!("{}", offset.0);
-            let value = offset.1;
-            quote! {pub const #ident: usize = #value;}
-        });
+        let tests = structs.iter().filter_map(|it| it.generate_test(&lut));
+
+        let offsets = if package.is_none() {
+            let offset_constants = offsets.data.iter().map(|offset| {
+                let ident = format_ident!("{}", offset.0);
+                let value = offset.1;
+                quote! {pub const #ident: usize = #value;}
+            });
+
+            Some(
+                quote! {
+                    mod offsets {
+                        #(#offset_constants)*
+                    }
+                }
+            )
+        } else {
+            Some( quote! { pub use super::*; } )
+        };
+
 
         let code = quote! {
+            use manasdk_macros::{extend, HasClassObject};
+
+            #offsets
+
             #(#code)*
 
             #[cfg(test)]
@@ -622,10 +663,6 @@ pub fn generate_code<P: AsRef<Path>>(
                 use super::*;
 
                 #(#tests)*
-            }
-
-            mod Offsets {
-                #(#offset_constants)*
             }
         };
 

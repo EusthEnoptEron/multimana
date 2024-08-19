@@ -16,9 +16,9 @@ pub use collections::*;
 pub use enums::*;
 pub use fields::*;
 pub use functions::*;
-use manasdk_macros::{extend, HasClassObject};
-
-use crate::Offsets::OFFSET_GWORLD;
+use crate::core_u_object::FSoftObjectPath;
+use crate::engine::{UWorld, UEngine};
+use crate::offsets::OFFSET_GWORLD;
 
 mod collections;
 mod enums;
@@ -26,7 +26,7 @@ mod fields;
 mod functions;
 mod strings;
 
-include!(concat!(env!("OUT_DIR"), "/generated_code.rs"));
+include!(concat!(env!("OUT_DIR"), "/generated_code/lib.rs"));
 
 pub trait HasClassObject {
     fn static_class() -> &'static UClass;
@@ -339,7 +339,7 @@ pub struct FProperty {
 
 impl UWorld {
     pub fn get_world() -> Option<&'static UWorld> {
-        if Offsets::OFFSET_GWORLD != 0 {
+        if offsets::OFFSET_GWORLD != 0 {
             unsafe {
                 resolve_offset::<*const UWorld>(OFFSET_GWORLD)
                     .as_ref()?

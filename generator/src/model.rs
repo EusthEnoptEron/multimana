@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
+use heck::ToSnakeCase;
 use regex::Regex;
 
 #[derive(Clone, Debug)]
@@ -114,7 +115,7 @@ impl ClassLookup {
         for mut item in dump.data {
             let package = self.manifest.structs.get(&item.name[1..])
                 .or_else(|| self.manifest.structs.get(&item.name))
-                .cloned();
+                .map(|it| it.to_snake_case());
 
             item.package = package;
 
@@ -137,7 +138,7 @@ impl ClassLookup {
         for mut item in dump.data {
             let package = self.manifest.structs.get(&item.name[1..])
                 .or_else(|| self.manifest.structs.get(&item.name))
-                .cloned();
+                .map(|it| it.to_snake_case());
 
             item.package = package;
 

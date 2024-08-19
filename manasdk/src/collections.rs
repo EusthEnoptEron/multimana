@@ -5,7 +5,7 @@ use std::fmt::{Debug, Formatter};
 use std::mem::ManuallyDrop;
 use std::sync::LazyLock;
 use tracing::info;
-use crate::{BASE_ADDRESS, FNameEntry, Offsets, UObject, UObjectPointer};
+use crate::{BASE_ADDRESS, FNameEntry, UObject, UObjectPointer, offsets};
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -191,7 +191,7 @@ unsafe impl Sync for TUObjectArray {}
 
 
 static FNAME_POOL: LazyLock<&'static FNamePool> = LazyLock::new(|| {
-    let address = *BASE_ADDRESS + Offsets::OFFSET_GNAMES;
+    let address = *BASE_ADDRESS + offsets::OFFSET_GNAMES;
     info!("GNames Address=0x{:x}", address);
     unsafe { (address as *const FNamePool).as_ref().expect("Unable to find GNames") }
 });
