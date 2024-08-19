@@ -1,19 +1,24 @@
-use std::collections::{HashSet, VecDeque};
-use std::fs::File;
-use std::io::{Write};
-use std::iter::once;
-use std::path::Path;
 use anyhow::Context;
 use heck::ToSnakeCase;
+use itertools::Itertools;
 use proc_macro2::{Span, TokenStream};
-use quote::{format_ident, quote, TokenStreamExt, ToTokens};
+use quote::{format_ident, quote, ToTokens, TokenStreamExt};
+use rayon::prelude::*;
 use regex::Regex;
-use syn::{Ident, parse_str};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs::File;
+use std::io::Write;
+use std::iter::once;
+use std::path::Path;
+use syn::{parse_str, Ident};
 
-use crate::{ClassLookup, EnumDefinition, EnumDump, EnumKind, FieldDefinition, FieldKind, FunctionDefinition, FunctionDump, Manifest, StructDefinition, StructDump, TypeSignature};
 use crate::serialization::OffsetData;
+use crate::{
+    ClassLookup, EnumDefinition, EnumDump, EnumKind, FieldDefinition, FieldKind,
+    FunctionDefinition, FunctionDump, Manifest, StructDefinition, StructDump, TypeSignature,
+};
 
-trait ToRustCode {
+trait ToRustCode: Send + Sync {
     fn name(&self) -> &str;
     fn package(&self) -> Option<&str>;
     fn generate_code(&self, context: &ClassLookup) -> TokenStream;
@@ -77,7 +82,9 @@ impl<'a> Iterator for TypeIterator<'a> {
                 self.track_by_name(parent.as_str());
             }
 
-            let mut types_queue = latest_struct.fields.iter()
+            let mut types_queue = latest_struct
+                .fields
+                .iter()
                 .map(|it| &it.signature)
                 .chain(latest_struct.functions.iter().flat_map(|fun| {
                     once(&fun.return_value).chain(fun.arguments.iter().map(|it| &it.type_))
@@ -103,22 +110,31 @@ impl<'a> Iterator for TypeIterator<'a> {
 }
 
 impl ClassLookup {
-    fn iter_compilation_units(&self) -> impl Iterator<Item=&dyn ToRustCode> {
+    fn iter_compilation_units(&self) -> impl Iterator<Item = &dyn ToRustCode> {
         TypeIterator::new(&self)
     }
 }
 
 #[derive(Clone, Debug)]
 enum PointerHandling {
-    Raw { mutable: bool },
-    Borrow { mutable: bool, lifetime: Option<String> },
+    Raw {
+        mutable: bool,
+    },
+    Borrow {
+        mutable: bool,
+        lifetime: Option<String>,
+    },
     Wrapper,
 }
 
 impl TypeSignature {
     fn is_uobject(&self) -> bool {
-        self.name.starts_with(&['U', 'A']) &&
-            self.name[1..].chars().nth(0).filter(char::is_ascii_uppercase).is_some()
+        self.name.starts_with(&['U', 'A'])
+            && self.name[1..]
+                .chars()
+                .nth(0)
+                .filter(char::is_ascii_uppercase)
+                .is_some()
     }
 
     fn to_tokens_with(&self, pointer_handling: PointerHandling) -> TokenStream {
@@ -132,15 +148,17 @@ impl TypeSignature {
         let typed_stream = if self.generics.is_empty() {
             quote!(#name)
         } else {
-            let generics = self.generics.iter().map(|it| it.to_tokens_with(pointer_handling.clone()));
+            let generics = self
+                .generics
+                .iter()
+                .map(|it| it.to_tokens_with(pointer_handling.clone()));
             quote!(#name <#(#generics),*>)
         };
 
         match (self.is_pointer, pointer_handling) {
             (true, PointerHandling::Borrow { mutable, lifetime }) => {
-                let lifetime_token = lifetime.map(|it| {
-                    syn::Lifetime::new(it.as_str(), Span::call_site())
-                });
+                let lifetime_token =
+                    lifetime.map(|it| syn::Lifetime::new(it.as_str(), Span::call_site()));
 
                 if mutable {
                     quote! { &#lifetime_token mut #typed_stream }
@@ -162,7 +180,7 @@ impl TypeSignature {
                     quote! { *const #typed_stream }
                 }
             }
-            (false, _) => { typed_stream }
+            (false, _) => typed_stream,
         }
     }
 }
@@ -282,7 +300,6 @@ impl StructDefinition {
             target.push(quote!(pub #field_name: #field_type));
         }
 
-
         if offset < self.struct_size {
             let name = format_ident!("_padding_{}", counter);
             let size = self.struct_size - offset;
@@ -307,7 +324,7 @@ impl ToRustCode for StructDefinition {
         let fields = self.resolve_fields(context);
 
         let extend_statement = self.parents.first().map(|parent| {
-            let parent_ident = format_ident!("{}",  parent);
+            let parent_ident = format_ident!("{}", parent);
             quote! {
                 #[extend(#parent_ident)]
             }
@@ -317,7 +334,9 @@ impl ToRustCode for StructDefinition {
             vec!["Debug", "Clone", "HasClassObject"]
         } else {
             vec!["Debug", "Clone"]
-        }.into_iter().map(|it| format_ident!("{}", it));
+        }
+        .into_iter()
+        .map(|it| format_ident!("{}", it));
 
         quote! {
             #[repr(C)]
@@ -344,9 +363,7 @@ impl ToRustCode for StructDefinition {
 
     fn generate_impl(&self, context: &ClassLookup) -> Option<TokenStream> {
         let name = format_ident!("{}", self.name);
-        let functions = self.functions.iter().map(|it| {
-            it.to_tokens(self)
-        });
+        let functions = self.functions.iter().map(|it| it.to_tokens(self));
 
         Some(quote! {
             impl #name {
@@ -367,57 +384,80 @@ impl FunctionDefinition {
         };
 
         let is_static = self.flags.contains("Static");
-        let out_params = self.arguments.iter().enumerate()
+        let out_params = self
+            .arguments
+            .iter()
+            .enumerate()
             .filter(|(_index, it)| it.is_out_param)
             .map(|(index, it)| (index, it))
             .collect::<Vec<_>>();
 
         let this_arg = if !is_static {
             Some(quote! { &self })
-        } else { None };
+        } else {
+            None
+        };
 
         // Args in the function signature
-        let signature_args = this_arg.into_iter().chain(self.arguments.iter().enumerate().map(|(index, it)| {
-            let id = as_identifier(it.name.as_str());
-            let type_ = &it.type_;
-            let type_stream = type_.to_tokens_with(PointerHandling::Borrow { mutable: false, lifetime: None });
+        let signature_args = this_arg
+            .into_iter()
+            .chain(self.arguments.iter().enumerate().map(|(index, it)| {
+                let id = as_identifier(it.name.as_str());
+                let type_ = &it.type_;
+                let type_stream = type_.to_tokens_with(PointerHandling::Borrow {
+                    mutable: false,
+                    lifetime: None,
+                });
 
-            if it.is_out_param {
-                quote! {
-                    #id: &mut #type_stream
+                if it.is_out_param {
+                    quote! {
+                        #id: &mut #type_stream
+                    }
+                } else {
+                    quote! {
+                        #id: #type_stream
+                    }
                 }
-            } else {
-                quote! {
-                    #id: #type_stream
-                }
-            }
-        }));
+            }));
 
         // The arguments within the struct
-        let struct_args = self.arguments.iter().enumerate().map(|(index, it)| {
-            if it.is_out_param {
-                let generic_name = format!("'b{}", index);
-                let type_stream = it.type_.to_tokens_with(PointerHandling::Borrow { mutable: false, lifetime: Some(generic_name) });
-                quote!(#type_stream)
-            } else {
-                let type_stream = it.type_.to_tokens_with(PointerHandling::Borrow { mutable: false, lifetime: Some("'a".into()) });
-                quote!(#type_stream)
-            }
-        }).chain(return_value.cloned().map(|it| quote!(#it)))
+        let struct_args = self
+            .arguments
+            .iter()
+            .enumerate()
+            .map(|(index, it)| {
+                if it.is_out_param {
+                    let generic_name = format!("'b{}", index);
+                    let type_stream = it.type_.to_tokens_with(PointerHandling::Borrow {
+                        mutable: false,
+                        lifetime: Some(generic_name),
+                    });
+                    quote!(#type_stream)
+                } else {
+                    let type_stream = it.type_.to_tokens_with(PointerHandling::Borrow {
+                        mutable: false,
+                        lifetime: Some("'a".into()),
+                    });
+                    quote!(#type_stream)
+                }
+            })
+            .chain(return_value.cloned().map(|it| quote!(#it)))
             .chain(once(quote! { std::marker::PhantomData<&'a u8> }));
 
-
         // Only the names for filling the struct
-        let signature_arg_names = self.arguments.iter().enumerate().map(|(index, it)| {
-            let id = as_identifier(it.name.as_str());
-            if it.is_out_param {
-                quote!(unsafe { ::core::mem::zeroed() })
-            } else {
-                quote!(#id)
-            }
-        }).chain(return_value.map(|it| {
-            quote!(unsafe { ::std::mem::zeroed() })
-        }))
+        let signature_arg_names = self
+            .arguments
+            .iter()
+            .enumerate()
+            .map(|(index, it)| {
+                let id = as_identifier(it.name.as_str());
+                if it.is_out_param {
+                    quote!(unsafe { ::core::mem::zeroed() })
+                } else {
+                    quote!(#id)
+                }
+            })
+            .chain(return_value.map(|it| quote!(unsafe { ::std::mem::zeroed() })))
             .chain(once(quote! { std::default::Default::default() }));
 
         let class_name = &owner.name[1..];
@@ -425,10 +465,7 @@ impl FunctionDefinition {
         let unable_to_find_class = format!("Unable to find {}", &owner.name[1..]);
         let unable_to_find_function = format!("Unable to find {}::{}", &owner.name[1..], self.name);
 
-
-        let return_type = return_value.map(|it| {
-            quote!(-> #it)
-        });
+        let return_type = return_value.map(|it| quote!(-> #it));
 
         let return_statement = return_value.map(|it| {
             let size: syn::Index = self.arguments.len().into();
@@ -478,13 +515,14 @@ impl FunctionDefinition {
             }
         });
 
-        let generics = once("'a".to_string()).chain(
-            out_params.iter().filter(|(_, arg)| arg.type_.has_pointers()).map(|(index, _)| {
-                format!("'b{}", index)
-            })
-        ).map(|name| {
-            syn::Lifetime::new(name.as_str(), Span::call_site())
-        });
+        let generics = once("'a".to_string())
+            .chain(
+                out_params
+                    .iter()
+                    .filter(|(_, arg)| arg.type_.has_pointers())
+                    .map(|(index, _)| format!("'b{}", index)),
+            )
+            .map(|name| syn::Lifetime::new(name.as_str(), Span::call_site()));
 
         quote! {
             pub fn #fn_id(#(#signature_args),*) #return_type {
@@ -514,64 +552,88 @@ impl FunctionDefinition {
     }
 }
 
-
-pub fn generate_code<P: AsRef<Path>>(base_path: P, excluded_types: &[&str], package_filter: Option<Regex>) -> anyhow::Result<TokenStream> {
-    let manifest: Manifest = std::fs::read_to_string(base_path.as_ref().join("GObjects-Dump.txt")).context("ObjectsDump")?.parse().context("Unable to parse manifest")?;
-    let structs_dump: StructDump = StructDump::from_raw_json(File::open(base_path.as_ref().join("StructsInfo.json")).context("StructsInfo")?)?;
-    let classes_dump: StructDump = StructDump::from_raw_json(File::open(base_path.as_ref().join("ClassesInfo.json")).context("ClassesInfo")?)?;
-    let enums_dump: EnumDump = EnumDump::from_raw_json(File::open(base_path.as_ref().join("EnumsInfo.json")).context("EnumsInfo")?)?;
-    let offsets: OffsetData = serde_json::from_reader(File::open(base_path.as_ref().join("OffsetsInfo.json")).context("Offsets")?)?;
+pub fn generate_code<P: AsRef<Path>>(
+    base_path: P,
+    excluded_types: &[&str],
+    package_filter: Option<Regex>,
+) -> anyhow::Result<HashMap<Option<String>, String>> {
+    let manifest: Manifest = std::fs::read_to_string(base_path.as_ref().join("GObjects-Dump.txt"))
+        .context("ObjectsDump")?
+        .parse()
+        .context("Unable to parse manifest")?;
+    let structs_dump: StructDump = StructDump::from_raw_json(
+        File::open(base_path.as_ref().join("StructsInfo.json")).context("StructsInfo")?,
+    )?;
+    let classes_dump: StructDump = StructDump::from_raw_json(
+        File::open(base_path.as_ref().join("ClassesInfo.json")).context("ClassesInfo")?,
+    )?;
+    let enums_dump: EnumDump = EnumDump::from_raw_json(
+        File::open(base_path.as_ref().join("EnumsInfo.json")).context("EnumsInfo")?,
+    )?;
+    let offsets: OffsetData = serde_json::from_reader(
+        File::open(base_path.as_ref().join("OffsetsInfo.json")).context("Offsets")?,
+    )?;
 
     let mut lut = ClassLookup::new(manifest, package_filter);
     lut.add_struct_dump(classes_dump);
     lut.add_struct_dump(structs_dump);
     lut.add_enum_dump(enums_dump);
 
-    lut.add_function_dump(FunctionDump::from_raw_json(File::open(base_path.as_ref().join("FunctionsInfo.json")).context("Functions")?)?);
+    lut.add_function_dump(FunctionDump::from_raw_json(
+        File::open(base_path.as_ref().join("FunctionsInfo.json")).context("Functions")?,
+    )?);
 
-
-    let units = lut.iter_compilation_units()
+    let units = lut
+        .iter_compilation_units()
         .filter(|it| !excluded_types.contains(&it.name()))
         .collect::<Vec<_>>();
 
-    let code = units.iter().map(|it| {
-        let code = it.generate_code(&lut);
-        let implem = it.generate_impl(&lut);
+    let grouped: HashMap<_, Vec<&dyn ToRustCode>> = units
+        .iter()
+        .into_grouping_map_by(|it| it.package())
+        .collect();
 
-        quote! {
-            #code
-            
-            #implem
-        }
-    });
+    let definitions: HashMap<_, _> = grouped.par_iter().map(|(package, values)| {
+        let code = values.iter().map(|it| {
+            let code = it.generate_code(&lut);
+            let implem = it.generate_impl(&lut);
 
-    let tests = units.iter().filter_map(|it| it.generate_test(&lut));
-    let offset_constants = offsets.data.iter().map(|offset| {
-        let ident = format_ident!("{}", offset.0);
-        let value = offset.1;
-        quote! {pub const #ident: usize = #value;}
-    });
+            quote! {
+                #code
 
-    let definitions = quote! {
-        #(#code)*
+                #implem
+            }
+        });
 
-        #[cfg(test)]
-        mod tests {
-            #![allow(non_snake_case)]
-            use std::mem::size_of;
-            use super::*;
+        let tests = values.iter().filter_map(|it| it.generate_test(&lut));
+        let offset_constants = offsets.data.iter().map(|offset| {
+            let ident = format_ident!("{}", offset.0);
+            let value = offset.1;
+            quote! {pub const #ident: usize = #value;}
+        });
 
-            #(#tests)*
-        }
+        let code = quote! {
+            #(#code)*
 
-        mod Offsets {
-            #(#offset_constants)*
-        }
-    };
+            #[cfg(test)]
+            mod tests {
+                #![allow(non_snake_case)]
+                use std::mem::size_of;
+                use super::*;
+
+                #(#tests)*
+            }
+
+            mod Offsets {
+                #(#offset_constants)*
+            }
+        };
+
+        (package.map(|it| it.to_string()), code.to_string())
+    }).collect();
 
     Ok(definitions)
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -589,24 +651,29 @@ mod tests {
             kind: EnumKind::U16,
             name: "MyTestFlags".into(),
             package: None,
-            options: vec![
-                ("Option1".into(), 0),
-                ("Option2".into(), 1),
-            ],
+            options: vec![("Option1".into(), 0), ("Option2".into(), 1)],
         };
 
-        let lookup = ClassLookup::new(Manifest { packages: HashSet::new(), structs: HashMap::new() }, None);
+        let lookup = ClassLookup::new(
+            Manifest {
+                packages: HashSet::new(),
+                structs: HashMap::new(),
+            },
+            None,
+        );
 
         let tokens = def.generate_code(&lookup);
         let actual = PrettyPlease::default().format_tokens(tokens).unwrap();
-        let expected = PrettyPlease::default().format_tokens(quote! {
-            ::flagset::flags! {
-                pub enum MyTestFlags: u16 {
-                    Option1 = 0u16,
-                    Option2 = 1u16
+        let expected = PrettyPlease::default()
+            .format_tokens(quote! {
+                ::flagset::flags! {
+                    pub enum MyTestFlags: u16 {
+                        Option1 = 0u16,
+                        Option2 = 1u16
+                    }
                 }
-            }
-        }).unwrap();
+            })
+            .unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -619,27 +686,48 @@ mod tests {
             name: "MyTest".into(),
             parents: vec![],
             fields: vec![
-                FieldDefinition::new("field_1".into(), 0, 1, 1, None, TypeSignature::new_simple("u8".into(), FieldKind::Primitive)),
-                FieldDefinition::new("field_2".into(), 8, 8, 1, None, TypeSignature::new_pointer("u8".into(), FieldKind::Primitive)),
+                FieldDefinition::new(
+                    "field_1".into(),
+                    0,
+                    1,
+                    1,
+                    None,
+                    TypeSignature::new_simple("u8".into(), FieldKind::Primitive),
+                ),
+                FieldDefinition::new(
+                    "field_2".into(),
+                    8,
+                    8,
+                    1,
+                    None,
+                    TypeSignature::new_pointer("u8".into(), FieldKind::Primitive),
+                ),
             ],
             functions: vec![],
         };
 
-
-        let lookup = ClassLookup::new(Manifest { packages: HashSet::new(), structs: HashMap::new() }, None);
+        let lookup = ClassLookup::new(
+            Manifest {
+                packages: HashSet::new(),
+                structs: HashMap::new(),
+            },
+            None,
+        );
         let tokens = def.generate_code(&lookup);
 
         let actual = PrettyPlease::default().format_tokens(tokens).unwrap();
-        let expected = PrettyPlease::default().format_tokens(quote! {
-            #[repr(C)]
-            #[derive(Debug, Clone)]
-            pub struct MyTest {
-                pub field_1: u8,
-                pub _padding_0: [u8; 7usize],
-                pub field_2: *mut u8,
-                pub _padding_1: [u8; 4usize]
-            }
-        }).unwrap();
+        let expected = PrettyPlease::default()
+            .format_tokens(quote! {
+                #[repr(C)]
+                #[derive(Debug, Clone)]
+                pub struct MyTest {
+                    pub field_1: u8,
+                    pub _padding_0: [u8; 7usize],
+                    pub field_2: *mut u8,
+                    pub _padding_1: [u8; 4usize]
+                }
+            })
+            .unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -655,7 +743,7 @@ fn as_identifier(name: &str) -> Ident {
             } else if parse_str::<Ident>(field_name.as_str()).is_err() {
                 format_ident!("{}_", field_name)
             } else {
-                format_ident!("{}",field_name)
+                format_ident!("{}", field_name)
             }
         }
     }

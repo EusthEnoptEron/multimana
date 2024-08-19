@@ -36,7 +36,7 @@ fn main() {
     .expect("Failed to generate code");
 
     let result = PrettyPlease::default()
-        .format_tokens(definitions)
+        .format_str(definitions)
         .expect("Failed to format code");
 
     let mut file = File::create(output_path).expect("Failed to create output file");
