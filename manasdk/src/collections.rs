@@ -327,8 +327,9 @@ impl<'a, T> Iterator for TArrayIter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.array.len() {
+            let el = &self.array[self.index];
             self.index += 1;
-            Some(&self.array[self.index])
+            Some(el)
         } else {
             None
         }
