@@ -1,9 +1,9 @@
-use std::fmt::{Debug, Formatter};
-use std::marker::PhantomData;
+use crate::core_u_object::{UClass, UEnum, UFunction, UObject, UStruct};
+use crate::{EClassCastFlags, EClassFlags, FName, TArray, TWeakObjectPtr, UObjectPointer};
 use flagset::FlagSet;
 use manasdk_macros::extend;
-use crate::{EClassCastFlags, EClassFlags, FName, TArray, TWeakObjectPtr, UClass, UFunction, UObject, UObjectPointer, UStruct};
-use crate::core_u_object::UEnum;
+use std::fmt::{Debug, Formatter};
+use std::marker::PhantomData;
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -34,11 +34,11 @@ impl Clone for FFieldVariant {
             is_uobject: self.is_uobject,
             container: if self.is_uobject {
                 ContainerType {
-                    object: unsafe { self.container.object }
+                    object: unsafe { self.container.object },
                 }
             } else {
                 ContainerType {
-                    field: unsafe { self.container.field }
+                    field: unsafe { self.container.field },
                 }
             },
         }

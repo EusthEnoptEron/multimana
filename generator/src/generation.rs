@@ -645,7 +645,7 @@ pub fn generate_code<P: AsRef<Path>>(
                 }
             )
         } else {
-            Some( quote! { pub use super::*; } )
+            Some( quote! { use super::*; } )
         };
 
 

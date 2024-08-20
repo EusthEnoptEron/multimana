@@ -27,7 +27,7 @@ pub fn has_class_object_derive(input: TokenStream) -> TokenStream {
     let simple_name = &type_name[1..];
 
     let expanded = quote! {
-        impl HasClassObject for #name {
+        impl crate::HasClassObject for #name {
             fn static_class() -> &'static UClass {
                 UClass::find(#simple_name).unwrap()
             }

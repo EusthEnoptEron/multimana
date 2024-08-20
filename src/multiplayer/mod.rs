@@ -1,12 +1,14 @@
 use crate::utils::{Mod, TrampolineWrapper};
 use anyhow::{anyhow, bail, Context, Result};
 use libmem::Address;
-use manasdk::{AActor, APawn, EFunctionFlags, ETwoPlayerSplitScreenType, FFrame, FNativeFuncPtr, HasClassObject, TArray, TFixedSizeArray, UClass, UField, UFunction, UGameMapsSettings, UGameplayStatics, UObject, UObjectPointer, UWorld};
+use manasdk::engine::{AActor, APawn, UGameplayStatics, UWorld};
+use manasdk::engine_settings::{ETwoPlayerSplitScreenType, UGameMapsSettings};
+use manasdk::{EFunctionFlags, FFrame, FNativeFuncPtr, HasClassObject, TFixedSizeArray, UClass, UObject, UObjectPointer};
 use std::any::Any;
 use std::ffi::c_void;
 use std::sync::RwLock;
 use tracing::{info, instrument, span, warn, Level};
-
+use manasdk::core_u_object::UFunction;
 
 #[derive(Default)]
 struct MultiplayerData {

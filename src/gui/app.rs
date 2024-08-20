@@ -3,7 +3,7 @@ use crate::gui::Render;
 use crate::setup::run_in_tick;
 use anyhow::Context;
 use eframe::egui;
-use manasdk::{UGameplayStatics, UWorld};
+use manasdk::engine::{UGameplayStatics, UWorld};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]

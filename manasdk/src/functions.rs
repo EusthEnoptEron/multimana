@@ -1,12 +1,12 @@
 use std::ffi::c_void;
 use std::fmt::{Display, Formatter};
 use std::iter::once;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
-use crate::{offsets, EClassCastFlags, EObjectFlags, FName, FProperty, HasClassObject, TUObjectArray, UClass, UField, UFunction, UObject, UObjectPointer, UStruct, BASE_ADDRESS};
+use crate::core_u_object::{UField, UFunction, UStruct};
+use crate::{offsets, EClassCastFlags, EObjectFlags, FName, FProperty, HasClassObject, TUObjectArray, UClass, UObject, UObjectPointer, BASE_ADDRESS};
 use dashmap::DashMap;
 use flagset::FlagSet;
-use lazy_static::lazy_static;
 
 thread_local! {
     static CLASS_CACHE: DashMap<String, Option<&'static UClass>> = DashMap::new();

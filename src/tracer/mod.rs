@@ -5,19 +5,13 @@ use crate::tracer::kismet_tracing::get_params;
 use crate::utils::{Mod, TrampolineWrapper};
 use anyhow::{anyhow, Context};
 use libmem::Address;
-use manasdk::{
-    EPropertyFlags, FFrame, FName, FNativeFuncPtr, FRotator, FScriptName, FString, FVector,
-    FVector2D, UBoolProperty, UByteProperty, UClass, UDoubleProperty, UEnum, UEnumProperty,
-    UFloatProperty, UFunction, UInt64Property, UInt8Property, UIntProperty, UNameProperty, UObject,
-    UObjectPointer, UObjectProperty, UProperty, UScriptStruct, UStrProperty, UStructProperty,
-    UUInt32Property, UUInt64Property,
-};
 use std::any::Any;
 use std::ffi::c_void;
 use std::sync::OnceLock;
-use tracing::{info, info_span, instrument, trace_span, Span};
+use tracing::{info, instrument, trace_span, Span};
 use tracing::field;
-use tracing_subscriber::fmt::format;
+use manasdk::{EPropertyFlags, FFrame, FNativeFuncPtr, FScriptName, UObject, UObjectPointer};
+use manasdk::core_u_object::{UFunction};
 use crate::tracer::to_string::to_string_fproperty;
 
 static VIRTUAL_FUNCTION_TRAMPOLINE: OnceLock<TrampolineWrapper<FNativeFuncPtr>> = OnceLock::new();

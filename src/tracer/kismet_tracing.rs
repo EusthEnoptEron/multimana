@@ -1,5 +1,6 @@
 use std::ffi::c_void;
-use manasdk::{EPropertyFlags, FFrame, UFunction, UObject};
+use manasdk::{EPropertyFlags, FFrame, UObject};
+use manasdk::core_u_object::UFunction;
 use crate::tracer::{EX_END_FUNCTION_PARAMS, GNATIVES};
 use crate::tracer::to_string::{to_string_fproperty};
 

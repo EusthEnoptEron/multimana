@@ -1,7 +1,8 @@
 use either::Either;
 use flagset::FlagSet;
-use manasdk::{EClassCastFlags, FProperty, FRotator, FStructProperty, FVector, FVector2D, UObject, UProperty, UScriptStruct, UStruct, UStructProperty};
+use manasdk::{EClassCastFlags, FProperty, FStructProperty, UObject};
 use std::ffi::c_void;
+use manasdk::core_u_object::{FRotator, FVector, FVector2D, UStruct, UProperty, UStructProperty, UScriptStruct};
 
 pub fn to_string(prop: &UProperty, result: *const c_void) -> String {
     to_string_internal(Either::Left(prop), result)

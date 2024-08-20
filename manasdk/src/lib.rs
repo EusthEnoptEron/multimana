@@ -1,6 +1,6 @@
 #![allow(non_camel_case_types)]
 
-use std::cell::{LazyCell, OnceCell};
+use std::cell::LazyCell;
 use std::ffi::c_void;
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -16,15 +16,18 @@ pub use collections::*;
 pub use enums::*;
 pub use fields::*;
 pub use functions::*;
-use crate::core_u_object::FSoftObjectPath;
+use crate::core_u_object::{FSoftObjectPath, UField, UFunction, UProperty};
 use crate::engine::{UWorld, UEngine};
 use crate::offsets::OFFSET_GWORLD;
+
+pub use crate::core_u_object::{UClass, UObject};
 
 mod collections;
 mod enums;
 mod fields;
 mod functions;
 mod strings;
+mod overrides;
 
 include!(concat!(env!("OUT_DIR"), "/generated_code/lib.rs"));
 
@@ -217,53 +220,6 @@ pub struct TSoftClassPtr<T> {
     pub pointer: TLazyObjectPtr<FSoftObjectPath>,
 }
 
-#[repr(C)]
-#[derive(Debug, Clone)]
-pub struct UObject {
-    pub v_table: *const usize,
-    pub flags: FlagSet<EObjectFlags>,
-    pub index: i32,
-    pub class: UObjectPointer<UClass>,
-    pub name: FName,
-    pub outer: UObjectPointer<UObject>,
-}
-
-impl AsRef<UObject> for UObject {
-    fn as_ref(&self) -> &UObject {
-        self
-    }
-}
-
-#[repr(C)]
-#[extend(UObject)]
-#[derive(Debug, Clone, HasClassObject)]
-pub struct UField {
-    pub next: UObjectPointer<UField>,
-}
-
-#[repr(C)]
-#[extend(UField)]
-#[derive(Debug, Clone, HasClassObject)]
-pub struct UStruct {
-    pub _padding_200: [u8; 0x10],
-    pub super_: UObjectPointer<UStruct>,
-    pub children: UObjectPointer<UField>,
-    pub child_properties: *const FField,
-    pub size: i32,
-    pub min_alignment: i32,
-    pub _padding_201: [u8; 0x50],
-}
-
-#[repr(C)]
-#[extend(UStruct)]
-#[derive(Debug, Clone, HasClassObject)]
-pub struct UClass {
-    pub _pad_1: [u8; 0x20],
-    pub cast_flags: FlagSet<EClassCastFlags>,
-    pub _pad_2: [u8; 0x40],
-    pub default_object: UObjectPointer<UObject>,
-    pub _pad_3: [u8; 0x110],
-}
 
 pub type FNativeFuncPtr = fn(context: UObjectPointer<UObject>, stack: &FFrame, result: *mut c_void);
 
@@ -297,32 +253,6 @@ impl<'a> FFrame<'a> {
     }
 }
 
-#[repr(C)]
-#[extend(UStruct)]
-#[derive(Debug, Clone, HasClassObject)]
-pub struct UFunction {
-    pub function_flags: FlagSet<EFunctionFlags>,
-    pub rep_offset: i16,
-    pub num_parms: u8,
-    pub parms_size: u16,
-    pub return_value_offset: u16,
-    pub _padding_300: [u8; 27],
-    pub exec_function: FNativeFuncPtr,
-}
-
-#[repr(C)]
-#[extend(UField)]
-#[derive(Debug, Clone, HasClassObject)]
-pub struct UProperty {
-    pub array_dim: i32,
-    pub element_size: i32,
-    pub property_flags: FlagSet<EPropertyFlags>,
-    pub rep_index: u16,
-    pub blueprint_replication_condition: u8,
-    pub offset_internal: i32,
-    
-    pub _padding_200: [u8; 33usize],
-}
 
 
 #[repr(C)]
@@ -373,60 +303,9 @@ impl UEngine {
     }
 }
 
-//
-// mod Params {
-//     use crate::{APlayerController, UObject, UObjectPointer};
-//
-//     #[repr(C)]
-//     #[derive(Debug, Clone)]
-//     pub struct GameplayStatics_GetPlayerController {
-//         pub world_context_obj: *const UObject,
-//         pub player_index: i32,
-//         pub return_value: UObjectPointer<APlayerController>
-//     }
-//
-//     #[cfg(test)]
-//     mod tests {
-//         use std::mem::offset_of;
-//         use super::*;
-//
-//         #[test]
-//         fn test_size() {
-//             assert_eq!(size_of::<GameplayStatics_GetPlayerController>(), 0x000018);
-//             assert_eq!(align_of::<GameplayStatics_GetPlayerController>(), 0x00008);
-//             assert_eq!(offset_of!(GameplayStatics_GetPlayerController, return_value), 0x000010);
-//         }
-//     }
-// }
-//
-// impl UGameplayStatics {
-//     pub fn get_player_controller(world_context_obj: &UObject, player_index: i32) -> UObjectPointer<APlayerController> {
-//         let class = UClass::find("GameplayStatics")
-//             .expect("Unable to find GameplayStatics");
-//
-//         let func = class
-//             .find_function_mut("GameplayStatics", "GetPlayerController")
-//             .expect("Unable to find GameplayStatics::GetPlayerController");
-//
-//         let mut parms = Params::GameplayStatics_GetPlayerController {
-//             world_context_obj,
-//             player_index,
-//             return_value: Default::default(),
-//         };
-//
-//         let flags = func.function_flags;
-//         func.function_flags |= EFunctionFlags::Native;
-//         class.default_object.as_ref().expect("No default object").process_event(func, &mut parms);
-//         func.function_flags = flags;
-//
-//         parms.return_value
-//     }
-// }
-
 #[cfg(test)]
 mod collection_tests {
     use std::mem::size_of;
-
     use super::*;
 
     #[test]
@@ -438,23 +317,5 @@ mod collection_tests {
         assert_eq!(size_of::<TSet<i32>>(), 0x50, "TSet has a wrong size!");
         assert_eq!(size_of::<TMap<i32, i32>>(), 0x50, "TMap has a wrong size!");
         assert_eq!(size_of::<FText>(), 24, "FText has a wrong size!");
-    }
-
-    #[test]
-    fn test_u_class() {
-        assert_eq!(size_of::<UClass>(), 560usize);
-    }
-
-    #[test]
-    fn test_u_function() {
-        assert_eq!(size_of::<UFunction>(), 224usize);
-    }
-
-    #[test]
-    fn test_inheritance() {}
-
-    #[test]
-    fn test_UProperty() {
-        assert_eq!(size_of:: < UProperty > (), 112usize);
     }
 }
