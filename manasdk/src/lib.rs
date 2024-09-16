@@ -52,28 +52,26 @@ fn resolve_offset<T>(offset: usize) -> *mut T {
 #[derive(Debug, Clone, Copy, Eq)]
 pub struct UObjectPointer<T: AsRef<UObject>>(*mut T);
 
+unsafe impl<T: AsRef<UObject>> Send for UObjectPointer<T> {}
+unsafe impl<T: AsRef<UObject>> Sync for UObjectPointer<T> {}
+
 impl<T: AsRef<UObject>> PartialEq for UObjectPointer<T> {
     fn eq(&self, other: &Self) -> bool {
         self.0 as usize == other.0 as usize
     }
 }
 
-impl<U, T> From<&U> for UObjectPointer<T>
+
+
+impl<T> From<&T> for UObjectPointer<T>
 where
-    U: Deref<Target = T>,
     T: AsRef<UObject>,
 {
-    fn from(value: &U) -> Self {
+    fn from(value: &T) -> Self {
         UObjectPointer(value as &T as *const T as *mut T)
     }
 }
 
-impl From<&UObject> for UObjectPointer<UObject>
-{
-    fn from(value: &UObject) -> Self {
-        UObjectPointer(unsafe { std::mem::transmute(value) })
-    }
-}
 
 impl<T: AsRef<UObject>> Default for UObjectPointer<T> {
     fn default() -> Self {
