@@ -1,6 +1,7 @@
 use flagset::FlagSet;
 use manasdk_macros::{extend, HasClassObject};
 use crate::{EClassCastFlags, EFunctionFlags, EObjectFlags, EPropertyFlags, FField, FName, FNativeFuncPtr, UObjectPointer};
+use crate::core_u_object::FVector;
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -76,6 +77,16 @@ pub struct UProperty {
     pub offset_internal: i32,
 
     pub _padding_200: [u8; 33usize],
+}
+
+impl FVector {
+    pub fn new(x: f32, y: f32, z: f32) -> Self {
+        Self {
+            x,
+            y,
+            z
+        }
+    }
 }
 
 #[cfg(test)]

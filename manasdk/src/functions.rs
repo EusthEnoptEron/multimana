@@ -84,6 +84,16 @@ impl UObject {
         }
     }
 
+    pub fn cast_mut<T: HasClassObject>(&mut self) -> Option<&mut T> {
+        let class = T::static_class();
+
+        if self.is_a(class) {
+            Some(unsafe { std::mem::transmute(self as *const Self) })
+        } else {
+            None
+        }
+    }
+    
     pub fn find_object(
         required_type: impl Into<FlagSet<EClassCastFlags>> + Copy,
         predicate: impl Fn(&UObject) -> bool,
@@ -122,6 +132,21 @@ impl UObject {
             hierarchy.reverse();
 
             format!("{} {}", class.name(), hierarchy.join("."))
+        } else {
+            "None".to_string()
+        }
+    }
+    
+    pub fn class_hierarchy(&self) -> String {
+        if let Some(class) = self.class.as_ref() {
+            let mut hierarchy = once(class)
+                .chain(class.iter_parents().filter_map(|it| it.cast::<UClass>()))
+                .map(|it| it.name())
+                .collect::<Vec<_>>();
+            hierarchy.reverse();
+            
+            
+            hierarchy.join(".")
         } else {
             "None".to_string()
         }
