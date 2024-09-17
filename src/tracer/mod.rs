@@ -2,16 +2,21 @@ mod kismet_tracing;
 mod to_string;
 
 use crate::tracer::kismet_tracing::get_params;
-use crate::utils::{Mod, TrampolineWrapper};
+use crate::utils::{Message, EventHandler, Mod, TrampolineWrapper};
 use anyhow::{anyhow, Context};
 use libmem::Address;
 use std::any::Any;
 use std::ffi::c_void;
+use std::ops::Deref;
 use std::sync::OnceLock;
 use tracing::{info, instrument, trace_span, Span};
 use tracing::field;
 use manasdk::{EPropertyFlags, FFrame, FNativeFuncPtr, FScriptName, UObject, UObjectPointer};
 use manasdk::core_u_object::{UFunction};
+use manasdk::engine::{APawn, UGameplayStatics, UWorld};
+use manasdk::py_char_base::APyCharBase;
+use manasdk::unreal_engine_python::APyPawn;
+use manasdk::x21::{AActPlayerState, ACustomPawn, UActCharacterMovementComponent};
 use crate::tracer::to_string::to_string_fproperty;
 
 static VIRTUAL_FUNCTION_TRAMPOLINE: OnceLock<TrampolineWrapper<FNativeFuncPtr>> = OnceLock::new();
@@ -26,7 +31,10 @@ static CONTEXT_TRAMPOLINE: OnceLock<TrampolineWrapper<FNativeFuncPtr>> = OnceLoc
 static GNATIVES: OnceLock<&'static [FNativeFuncPtr; 0x100]> = OnceLock::new();
 
 #[derive(Default)]
-pub struct Tracer {}
+pub struct Tracer {
+    pawn_ref: OnceLock<UObjectPointer<APyCharBase>>
+}
+
 const EX_END_FUNCTION_PARAMS: u8 = 0x16;
 
 fn log_function_call(
@@ -253,6 +261,49 @@ impl Mod for Tracer {
     }
 
     fn tick(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+
+impl EventHandler for Tracer {
+    fn handle_evt(&self, e: &Message) -> anyhow::Result<()> {
+        match e {
+            Message::LogPlayerPawn => {
+                let pawn = self.pawn_ref.get_or_init(|| {
+                    let world = UWorld::get_world().context("Could not get world").unwrap();
+                    UGameplayStatics::get_player_pawn(world, 0).try_get()
+                        .context("Could not get player pawn").unwrap()
+                        .cast::<APyCharBase>()
+                        .context("Cannot cast to pychar").unwrap()
+                        .into()
+                }).as_ref().context("Unable to get pawn")?;
+                
+                info!("Pawn class: {}", pawn.class_hierarchy());
+                info!("Pawn: {pawn:#?}");
+
+                let movement = pawn.get_movement_component().try_get()
+                    .context("Could not get movement component")?
+                    .cast::<UActCharacterMovementComponent>()
+                    .context("Could not cast to UActCharacterMovementComponent")?;
+
+                info!("Movement: {movement:#?}");
+
+                let player_state = pawn.player_state.as_ref()
+                    .context("Could not get player state")?
+                    .cast::<AActPlayerState>()
+                    .context("Could not cast to AActPlayerState")?;
+                
+                info!("State: {player_state:#?}");
+
+                let input_comp = pawn.input_component.as_ref()
+                    .context("Could not get input component")?;
+
+                info!("Input: {input_comp:#?}");
+                info!("Input Class: {:#?}", input_comp.class_hierarchy());
+            }
+        }
+
         Ok(())
     }
 }

@@ -1,8 +1,10 @@
 use crate::statics::MODS;
-use anyhow::Context;
+use anyhow::{anyhow, Context};
+use concurrent_queue::ConcurrentQueue;
 use libmem::Trampoline;
 use std::any::Any;
 use std::marker::PhantomData;
+use std::sync::{Arc, RwLock};
 use tracing::error;
 
 #[derive(Debug)]
@@ -20,7 +22,7 @@ impl<T> From<Trampoline> for TrampolineWrapper<T> {
     }
 }
 
-pub trait Mod: Any + Send + Sync + 'static {
+pub trait Mod: Any + EventHandler + Send + Sync + 'static {
     fn id() -> u32
     where
         Self: Sized;
@@ -52,4 +54,56 @@ pub trait Mod: Any + Send + Sync + 'static {
 
         Ok(())
     }
+}
+
+pub struct MessageBus {
+    handlers: RwLock<Vec<Arc<dyn EventHandler>>>,
+    message_queue: ConcurrentQueue<Message>,
+}
+
+impl MessageBus {
+    pub fn add_handler(&self, handler: Arc<dyn EventHandler>) -> anyhow::Result<()> {
+        let mut handlers = self
+            .handlers
+            .write()
+            .map_err(|_| anyhow!("Unable to lock handlers"))?;
+        
+        handlers.push(handler);
+
+        Ok(())
+    }
+
+    pub fn dispatch(&self, evt: Message) {
+        if let Err(e) = self.message_queue.push(evt) {
+            error!("Failed to push event to queue: {e}");
+        }
+    }
+    
+    pub fn tick(&self) {
+        if let Some(handlers) = self.handlers.read().ok() {
+            while let Ok(evt) = self.message_queue.pop() {
+                for handler in handlers.iter() {
+                    if let Err(e) = handler.handle_evt(&evt) {
+                        error!("Error happened in handler for evt ({evt:?}): {e}");
+                    }
+                }
+            }    
+        }
+    }
+
+    pub fn new() -> Self {
+        Self {
+            handlers: RwLock::new(Vec::new()),
+            message_queue: ConcurrentQueue::bounded(50),
+        }
+    }
+}
+
+pub trait EventHandler: Send + Sync + 'static {
+    fn handle_evt(&self, e: &Message) -> anyhow::Result<()>;
+}
+
+#[derive(Clone, Debug)]
+pub enum Message {
+    LogPlayerPawn,
 }

@@ -1,4 +1,4 @@
-use crate::statics::{MODS, WORKER_QUEUE};
+use crate::statics::{MESSAGE_BUS, MODS, WORKER_QUEUE};
 use crate::utils::TrampolineWrapper;
 use anyhow::{anyhow, Context};
 use libmem::Address;
@@ -43,6 +43,8 @@ fn tick(this: *const c_void) {
     while let Ok(work) = WORKER_QUEUE.pop() {
         work();
     }
+    
+    MESSAGE_BUS.tick();
 }
 
 pub fn setup() -> anyhow::Result<()> {

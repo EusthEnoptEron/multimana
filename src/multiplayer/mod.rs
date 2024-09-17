@@ -1,4 +1,4 @@
-use crate::utils::{Mod, TrampolineWrapper};
+use crate::utils::{Message, EventHandler, Mod, TrampolineWrapper};
 use anyhow::{anyhow, bail, Context, Result};
 use libmem::Address;
 use manasdk::engine::{AActor, APawn, UGameplayStatics, UWorld};
@@ -6,19 +6,28 @@ use manasdk::engine_settings::{ETwoPlayerSplitScreenType, UGameMapsSettings};
 use manasdk::{EFunctionFlags, FFrame, FNativeFuncPtr, HasClassObject, TFixedSizeArray, UClass, UObject, UObjectPointer};
 use std::any::Any;
 use std::ffi::c_void;
+use std::ops::DerefMut;
 use std::sync::RwLock;
 use tracing::{info, instrument, span, warn, Level};
-use manasdk::core_u_object::UFunction;
+use manasdk::core_u_object::{FVector, UFunction};
+use manasdk::x21::{UActCharacterMovementComponent, USakuraBlueprintFunctionLibrary};
 
 #[derive(Default)]
 struct MultiplayerData {
     initialized: bool,
     exec_function: Option<TrampolineWrapper<FNativeFuncPtr>>,
+    pawn: UObjectPointer<APawn>,
 }
 
 #[derive(Default)]
 pub struct MultiplayerMod {
     inner: RwLock<MultiplayerData>,
+}
+
+impl EventHandler for MultiplayerMod {
+    fn handle_evt(&self, e: &Message) -> Result<()> {
+        Ok(())
+    }
 }
 
 impl Mod for MultiplayerMod {
@@ -63,6 +72,14 @@ impl Mod for MultiplayerMod {
 
     fn tick(&self) -> Result<()> {
         if self.inner.read().ok().context("Could not read data")?.initialized {
+            if let Some(pawn) = self.inner.read().ok().and_then(|it| it.pawn.clone().try_get().ok()) {
+                USakuraBlueprintFunctionLibrary::set_ai_controller_tick_enabled(pawn, false);
+                USakuraBlueprintFunctionLibrary::set_ai_controller_tick_interval(pawn, 0f32);
+                // let movement_component = pawn.get_movement_component().try_get().context("No movement comp")?.cast_mut::<UActCharacterMovementComponent>().context("Not an ActCharMovComp")?;
+                // movement_component.set_component_tick_enabled(true);
+                // movement_component.set_component_tick_interval(0.016666668f32);
+            }
+
             return Ok(());
         }
 
@@ -121,7 +138,11 @@ impl MultiplayerMod {
 
         info!("Actor count: {} (capacity={})", actors.len(), actors.max_elements);
         if let Some(actor) = actors.iter().find(|it| it.class.as_ref().unwrap().name() == "BP_P002_C") {
-            second_player.possess(actor.cast().context("Unable to cast actor to pawn")?);
+            let pawn = actor.cast().context("Unable to cast actor to pawn")?;
+            second_player.possess(pawn);
+            if let Ok(mut inner) = self.inner.write() {
+                inner.pawn = UObjectPointer::from(pawn);
+            }
         } else {
             bail!("No other pawns found!");
         }

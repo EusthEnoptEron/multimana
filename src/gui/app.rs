@@ -4,6 +4,9 @@ use crate::setup::run_in_tick;
 use anyhow::Context;
 use eframe::egui;
 use manasdk::engine::{UGameplayStatics, UWorld};
+use crate::multiplayer::MultiplayerMod;
+use crate::statics::MESSAGE_BUS;
+use crate::utils::{Message, Mod};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -86,15 +89,8 @@ impl eframe::App for App {
             });
 
             ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                if let Ok(name) = run_in_tick(|| {
-                    let world = UWorld::get_world().context("World missing")?;
-                    let player_pawn = UGameplayStatics::get_player_pawn(world, 0).try_get()?;
-
-                    Ok(player_pawn.name())
-                }) {
-                    self.label = name;
-                }
+            if ui.button("Log Pawn").clicked() {
+                MESSAGE_BUS.dispatch(Message::LogPlayerPawn);
             }
 
             ui.separator();
