@@ -1,7 +1,7 @@
 use flagset::FlagSet;
 use manasdk_macros::{extend, HasClassObject};
 use crate::{EClassCastFlags, EFunctionFlags, EObjectFlags, EPropertyFlags, FField, FName, FNativeFuncPtr, UObjectPointer};
-use crate::core_u_object::FVector;
+use crate::core_u_object::{FVector, FVector2D};
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -88,6 +88,16 @@ impl FVector {
         }
     }
 }
+
+impl FVector2D {
+    pub fn new(x: f32, y: f32) -> Self {
+        Self {
+            x,
+            y,
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
