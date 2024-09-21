@@ -1,5 +1,7 @@
 # multimana
 
+![CI Status](https://github.com/EusthEnoptEron/multimana/actions/workflows/rust.yml/badge.svg)
+
 This is a work-in-progress highly experimental multiplayer mod for Visions of Mana.
 It is not yet usable and might never see completion, but it may already be interesting as a point of reference.
 
