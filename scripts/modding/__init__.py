@@ -9,20 +9,20 @@ sys.stderr = stderr_file
 print("Set up logging")
 
 import unreal_engine as ue
-import datetime
+import mod_extensions
 
-def log(text, prefix):
-    now = datetime.datetime.now().isoformat()
-    print(f"{now} {prefix} python {text}")
+# We're redirecting the ue log functions to our internal logging handler
+def log(text, severity):
+    mod_extensions.log(text, severity)
 
 def log_info(text):
-    log(text, 'INFO')
+    log(text, 2)
 
 def log_warn(text):
-    log(text, 'WARN')
+    log(text, 1)
 
 def log_error(text):
-    log(text, 'ERROR')
+    log(text, 0)
 
 ue.log = log_info
 ue.log_warning = log_warn
