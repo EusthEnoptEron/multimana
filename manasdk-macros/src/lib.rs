@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 
-use quote::{quote, ToTokens};
-use syn::{Data, DeriveInput, Fields, ItemStruct, parse_macro_input, parse_quote, Type, TypePath};
+use quote::quote;
+use syn::{DeriveInput, Fields, ItemStruct, parse_macro_input, parse_quote, TypePath};
 
 #[proc_macro_derive(HasClassObject)]
 pub fn has_class_object_derive(input: TokenStream) -> TokenStream {
