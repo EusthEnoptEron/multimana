@@ -1,20 +1,13 @@
 mod bindings;
 
-use crate::utils::{EventHandler, Message, Mod};
-use std::any::Any;
-use tracing::info;
 use crate::python_interpreter::bindings::{py_compile_string, py_exec_code_module};
-
-// language=python
-const BOOTSTRAP_SCRIPT: &str = "
-import sys
-
-# Add a directory to the module search path
-sys.path.append('C:/Users/eusth/.rye/py/cpython@3.7.3/Lib')
-sys.path.append('Scripts')
-
-import bootstrap
-";
+use crate::utils::{EventHandler, Message, Mod};
+use anyhow::{anyhow, Context};
+use pyo3::prelude::*;
+use pyo3::Python;
+use std::any::Any;
+use std::thread::Thread;
+use tracing::info;
 
 #[derive(Default)]
 pub struct PythonInterpreterMod {}
@@ -43,10 +36,14 @@ impl Mod for PythonInterpreterMod {
 
     fn init(&self) -> anyhow::Result<()> {
         info!("Installing python interpreter");
+
+        let script = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/bootstrap.py"));
         
-        let script = py_compile_string(BOOTSTRAP_SCRIPT, "modding.py")?;
-        py_exec_code_module("modding", script)?;
-        
+        Python::with_gil(|py| {
+            PyModule::from_code_bound(py, script, "bootstrap.py", "bootstrap")?;
+            anyhow::Ok(())
+        })?;
+
         info!("Python interpreter initialized!");
         Ok(())
     }

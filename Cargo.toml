@@ -22,6 +22,7 @@ winit = "0.29.15"
 concurrent-queue = "2.5.0"
 either = "1.13.0"
 flagset = "0.4.6"
+pyo3 = { version = "0.22.3", features = ["anyhow"] }
 
 [lib]
 crate-type = ["cdylib"]
