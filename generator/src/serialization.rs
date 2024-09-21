@@ -17,7 +17,7 @@ pub enum FieldDefinition {
     InheritInfo(Vec<String>),
     MDKClassSize(usize),
     Field((FieldSignature, usize, usize, usize)),
-    FieldWithBitOffset((FieldSignature, usize, usize, usize, i64)),
+    FieldWithBitOffset((FieldSignature, usize, usize, usize, u8)),
 }
 
 #[derive(Deserialize, Debug)]

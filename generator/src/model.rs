@@ -197,7 +197,7 @@ pub struct FieldDefinition {
     pub name: String,
     pub offset: usize,
     pub size: usize,
-    pub bit_offset: Option<i64>,
+    pub bit_offset: Option<u8>,
     pub unknown: usize,
     pub signature: TypeSignature,
 }
@@ -219,7 +219,7 @@ pub struct ArgumentDefinition {
 }
 
 impl FieldDefinition {
-    pub fn new(name: String, offset: usize, size: usize, unknown: usize, bit_offset: Option<i64>, signature: TypeSignature) -> Self {
+    pub fn new(name: String, offset: usize, size: usize, unknown: usize, bit_offset: Option<u8>, signature: TypeSignature) -> Self {
         Self { name, offset, size, bit_offset, unknown, signature }
     }
 }

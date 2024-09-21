@@ -383,10 +383,47 @@ impl ToRustCode for StructDefinition {
     fn generate_impl(&self, context: &ClassLookup) -> Option<TokenStream> {
         let name = format_ident!("{}", self.name);
         let functions = self.functions.iter().map(|it| it.to_tokens(self, context));
+        let bit_functions = self.fields.iter().filter(|it| it.bit_offset.is_some()).map(|field| {
+            let identifier = as_identifier(field.name.as_str());
+            let getter = format_ident!("bit_get_{}", identifier);
+            let setter = format_ident!("bit_set_{}", identifier);
+            let offset = field.offset;
+            let bit_offset = field.bit_offset.unwrap();
+   
+            quote! {
+                pub fn #getter (&self) -> bool {
+                    let base_address = unsafe {
+                        (std::ptr::addr_of!(*self) as *const u8).add(#offset)
+                    };
+                    
+                    unsafe {
+                        let mask = 0b10000000u8 >> #bit_offset;
+                        ((*base_address) & mask) != 0
+                    }
+                }
+
+                pub fn #setter (&mut self, value: bool) {
+                    let base_address = unsafe {
+                        (std::ptr::addr_of!(*self) as *const u8).add(#offset) as *mut u8
+                    };
+        
+                    unsafe {
+                        let mask = 0b10000000u8 >> #bit_offset;
+                        if true {
+                            *base_address |= mask;
+                        } else {
+                            *base_address &= !mask;
+                        }
+                    };
+                }
+            }
+        });
 
         Some(quote! {
             impl #name {
                 #(#functions)*
+                
+                #(#bit_functions)*
             }
         })
     }
