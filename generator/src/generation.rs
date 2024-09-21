@@ -397,7 +397,7 @@ impl ToRustCode for StructDefinition {
                     };
                     
                     unsafe {
-                        let mask = 0b10000000u8 >> #bit_offset;
+                        let mask = 0b00000001u8 << #bit_offset;
                         ((*base_address) & mask) != 0
                     }
                 }
@@ -408,8 +408,8 @@ impl ToRustCode for StructDefinition {
                     };
         
                     unsafe {
-                        let mask = 0b10000000u8 >> #bit_offset;
-                        if true {
+                        let mask = 0b00000001u8 << #bit_offset;
+                        if value {
                             *base_address |= mask;
                         } else {
                             *base_address &= !mask;
