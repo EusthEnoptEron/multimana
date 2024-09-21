@@ -2202,6 +2202,7 @@ dependencies = [
  "manasdk",
  "nu-ansi-term 0.50.1",
  "pyo3",
+ "python3-dll-a",
  "serde",
  "tracing",
  "tracing-appender",
@@ -2788,6 +2789,15 @@ dependencies = [
  "pyo3-build-config",
  "quote",
  "syn 2.0.72",
+]
+
+[[package]]
+name = "python3-dll-a"
+version = "0.2.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd0b78171a90d808b319acfad166c4790d9e9759bbc14ac8273fe133673dd41b"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

@@ -1,0 +1,3 @@
+[env]
+PYO3_CROSS_LIB_DIR = "target/python3-dll"
+PYO3_CROSS_PYTHON_VERSION = "3.7"

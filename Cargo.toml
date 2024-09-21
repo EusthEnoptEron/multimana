@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 # see more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 manasdk = { path = "manasdk" }
 tracing = "0.1"
@@ -29,3 +28,6 @@ crate-type = ["cdylib"]
 
 [workspace]
 members = ["generator", "manasdk", "manasdk-macros"]
+
+[build-dependencies]
+python3-dll-a = "0.2.10"
