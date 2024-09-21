@@ -1,6 +1,6 @@
-#![allow(non_camel_case_types)]
-#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types, non_upper_case_globals, unused)]
 
+/// These bindings are left for reference, but they are no longer used and have been replaced by PyO3.
 use anyhow::{bail, Context};
 use std::ffi::{c_char, c_void, CString};
 use std::sync::LazyLock;
@@ -72,7 +72,7 @@ pub fn py_compile_string(code: &str, filename: &str) -> anyhow::Result<*const c_
 
     let state = PyGILState_Ensure();
     let co = Py_CompileString(code.as_ptr(), filename.as_ptr(), PY_FILE_INPUT);
-    
+
     if co.is_null() {
         // Clear error
         PyErr_Print();
