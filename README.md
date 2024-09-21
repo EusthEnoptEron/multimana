@@ -19,7 +19,6 @@ It is not yet usable and might never see completion, but it may already be inter
 ### Prerequisites
 
 - [Rust toolchain](https://rustup.rs/)
-- [Python](https://pyo3.rs/v0.15.1/building_and_distribution#configuring-the-python-version)
 
 ### Installing
 
