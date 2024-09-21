@@ -6,7 +6,7 @@ use pyo3::Python;
 use std::any::Any;
 use anyhow::anyhow;
 use pyo3::types::PyDict;
-use tracing::{error, info, warn};
+use tracing::{error, info, trace, warn};
 
 #[derive(Default)]
 pub struct PythonInterpreterMod {}
@@ -23,7 +23,7 @@ fn log(text: &str, severity: i32) {
     match severity {
         0 => error!("{text}"),
         1 => warn!("{text}"),
-        _ => info!("{text}"),
+        _ => trace!("{text}"),
     }
 }
 
