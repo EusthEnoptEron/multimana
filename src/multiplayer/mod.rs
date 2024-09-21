@@ -1,5 +1,5 @@
 use crate::utils::{EventHandler, Message, Mod, TrampolineWrapper};
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use libmem::Address;
 use manasdk::core_u_object::UFunction;
 use manasdk::engine::{AActor, APawn, UGameplayStatics, UWorld};

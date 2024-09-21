@@ -1,12 +1,8 @@
 use crate::gui::tracer_window::TracerWindow;
 use crate::gui::Render;
-use crate::setup::run_in_tick;
-use anyhow::Context;
 use eframe::egui;
-use manasdk::engine::{UGameplayStatics, UWorld};
-use crate::multiplayer::MultiplayerMod;
 use crate::statics::MESSAGE_BUS;
-use crate::utils::{Message, Mod};
+use crate::utils::Message;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -43,7 +39,7 @@ impl App {
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
-        let mut app: App = if let Some(storage) = cc.storage {
+        let app: App = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Default::default()
