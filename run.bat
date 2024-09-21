@@ -49,9 +49,9 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b %ERRORLEVEL%
 )
 
-del "%OUTPUT_DIR%\Scripts" /S /Q /F
-mkdir "%OUTPUT_DIR%\Scripts\"
-xcopy /E /I scripts "%OUTPUT_DIR%\Scripts"
+del "%OUTPUT_DIR%\scripts" /S /Q /F
+mkdir "%OUTPUT_DIR%\scripts\"
+xcopy /E /I scripts "%OUTPUT_DIR%\scripts"
 
 "%OUTPUT_DIR%\VisionsofMana-Win64-Shipping.exe"
 
