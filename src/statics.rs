@@ -8,6 +8,7 @@ use std::sync::{Arc, OnceLock};
 use tracing::{error, info};
 use tracing_subscriber::filter::Targets;
 use tracing_subscriber::{reload, Registry};
+use crate::python_interpreter::PythonInterpreterMod;
 
 pub static TRACER_RELOAD_HANDLE: OnceLock<reload::Handle<Targets, Registry>> = OnceLock::new();
 
@@ -25,6 +26,11 @@ lazy_static! {
         });
         m.insert(Tracer::id(), { 
             let mod_ = Arc::new(Tracer::default());
+            MESSAGE_BUS.add_handler(mod_.clone()).unwrap();
+            mod_
+        });
+        m.insert(PythonInterpreterMod::id(), { 
+            let mod_ = Arc::new(PythonInterpreterMod::default());
             MESSAGE_BUS.add_handler(mod_.clone()).unwrap();
             mod_
         });

@@ -10,6 +10,7 @@ use windows_sys::Win32::System::SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS
 mod console;
 mod gui;
 mod multiplayer;
+mod python_interpreter;
 mod setup;
 mod statics;
 mod tracer;
