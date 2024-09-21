@@ -1,0 +1,27 @@
+[package]
+name = "manasdk"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+heck = "0.5.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+regex = "1.10.6"
+generator = { path = "../generator" }
+rust-format = { version = "0.3.4", features = ["pretty_please"] }
+
+[dependencies]
+serde = { version = "1.0.204", features = ["derive"] }
+regex = "1.10.6"
+widestring = "1.1.0"
+manasdk-macros = { path = "../manasdk-macros" }
+flagset = "0.4.6"
+bitfield = "0.16.1"
+tracing = "0.1.40"
+windows-sys = { version = "0.59.0", features = ["Win32_System_LibraryLoader"] }
+dashmap = "6.0.1"
+itertools = "0.13.0"
+lazy_static = "1.5.0"
