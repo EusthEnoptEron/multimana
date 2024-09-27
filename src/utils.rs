@@ -3,8 +3,9 @@ use anyhow::{anyhow, Context};
 use concurrent_queue::ConcurrentQueue;
 use libmem::Trampoline;
 use std::any::Any;
+use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Weak};
 use tracing::error;
 
 #[derive(Debug)]
@@ -57,18 +58,22 @@ pub trait Mod: Any + EventHandler + Send + Sync + 'static {
 }
 
 pub struct MessageBus {
-    handlers: RwLock<Vec<Arc<dyn EventHandler>>>,
+    handlers: RwLock<Vec<Weak<dyn EventHandler>>>,
     message_queue: ConcurrentQueue<Message>,
 }
 
 impl MessageBus {
     pub fn add_handler(&self, handler: Arc<dyn EventHandler>) -> anyhow::Result<()> {
+        self.add_handler_by_ref(&handler)
+    }
+    
+    pub fn add_handler_by_ref(&self, handler: &Arc<dyn EventHandler>) -> anyhow::Result<()> {
         let mut handlers = self
             .handlers
             .write()
             .map_err(|_| anyhow!("Unable to lock handlers"))?;
         
-        handlers.push(handler);
+        handlers.push(Arc::downgrade(handler));
 
         Ok(())
     }
@@ -82,7 +87,7 @@ impl MessageBus {
     pub fn tick(&self) {
         if let Some(handlers) = self.handlers.read().ok() {
             while let Ok(evt) = self.message_queue.pop() {
-                for handler in handlers.iter() {
+                for handler in handlers.iter().filter_map(|it| it.upgrade()) {
                     if let Err(e) = handler.handle_evt(&evt) {
                         error!("Error happened in handler for evt ({evt:?}): {e}");
                     }
@@ -106,4 +111,20 @@ pub trait EventHandler: Send + Sync + 'static {
 #[derive(Clone, Debug)]
 pub enum Message {
     LogPlayerPawn,
+    ExecutePython { code: String, eval: bool },
+    PythonOutput { output: String }
+    
+}
+
+
+pub trait Loggable {
+    fn and_log_if_err(self);
+}
+
+impl<E> Loggable for Result<(), E> where E : Debug {
+    fn and_log_if_err(self) {
+        if let Err(e) = self {
+            error!("{e:?}");
+        }
+    }
 }

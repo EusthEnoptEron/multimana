@@ -4,7 +4,7 @@ use eframe::{egui};
 use winit::platform::windows::EventLoopBuilderExtWindows;
 
 mod app;
-mod tracer_window;
+mod python_console;
 
 pub fn open_gui() {
     std::thread::spawn(|| {
@@ -29,6 +29,13 @@ pub fn open_gui() {
 
 
 trait Render {
-    fn show(&mut self, ctx: &egui::Context);
     fn render(&mut self, ui: &mut egui::Ui) -> anyhow::Result<()>;
+}
+
+trait Show : Render {
+    fn show(&mut self, ctx: &egui::Context);
+}
+
+trait Panel : Render {
+    fn get_name(&self) -> &str;
 }

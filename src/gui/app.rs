@@ -1,32 +1,37 @@
-use crate::gui::tracer_window::TracerWindow;
-use crate::gui::Render;
+use std::sync::Arc;
+use crate::gui::python_console::PythonConsole;
+use crate::gui::{Panel, Render, Show};
+use crate::utils::Loggable;
+use anyhow::Context;
 use eframe::egui;
+use eframe::egui::Ui;
+use tracing::Level;
+use tracing_subscriber::filter::Targets;
 use crate::statics::MESSAGE_BUS;
-use crate::utils::Message;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct App {
-    // Example stuff:
-    label: String,
-
-    #[serde(skip)] // This how you opt-out of serialization of a field
-    value: f32,
-    
     #[serde(skip)]
-    panels: Vec<Box<dyn Render>>
+    tracing_enabled: bool,
+
+    #[serde(skip)]
+    panels: Vec<Box<dyn Panel>>,
+
+    #[serde(skip)]
+    panel_index: usize,
 }
 
 impl Default for App {
     fn default() -> Self {
         Self {
             // Example stuff:
-            label: "Hello World!".to_owned(),
-            value: 2.7,
+            tracing_enabled: false,
             panels: vec![
-                Box::new(TracerWindow::default())
-            ]
+                Box::new(PythonConsole::new())
+            ],
+            panel_index: 0,
         }
     }
 }
@@ -44,13 +49,33 @@ impl App {
         } else {
             Default::default()
         };
-        
+
         app
+    }
+
+    fn tracing_button(&mut self, ui: &mut Ui) {
+        if ui.checkbox(&mut self.tracing_enabled, "Enable Tracing").changed() {
+            if let Ok(reload) = crate::statics::TRACER_RELOAD_HANDLE
+                .get()
+                .context("Unable to get handle") {
+                reload.modify(|layer| {
+                    *layer = Targets::new().with_target(
+                        "tracer",
+                        if self.tracing_enabled {
+                            Level::TRACE
+                        } else {
+                            Level::ERROR
+                        },
+                    );
+                }).and_log_if_err();
+            } else {
+                self.tracing_enabled = !self.tracing_enabled
+            }
+        }
     }
 }
 
 impl eframe::App for App {
-
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
@@ -59,53 +84,34 @@ impl eframe::App for App {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
 
-            egui::menu::bar(ui, |ui| {
-                // NOTE: no File->Quit on web pages!
-                let is_web = cfg!(target_arch = "wasm32");
-                if !is_web {
-                    ui.menu_button("File", |ui| {
-                        if ui.button("Quit").clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    });
-                    ui.add_space(16.0);
-                }
+            ui.horizontal_wrapped(|ui| {
+                ui.visuals_mut().button_frame = false;
 
-                egui::widgets::global_dark_light_mode_buttons(ui);
+                ui.menu_button("Settings", |ui| {
+                    self.tracing_button(ui);
+                });
+
+                ui.separator();
+
+                for (i, panel) in self.panels.iter().enumerate() {
+                    if ui.selectable_label(i == self.panel_index, panel.get_name()).clicked() {
+                        self.panel_index = i;
+                    }
+                }
             });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("eframe template");
-
-            ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(&mut self.label);
-            });
-
-            ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            if ui.button("Log Pawn").clicked() {
-                MESSAGE_BUS.dispatch(Message::LogPlayerPawn);
-            }
-
-            ui.separator();
-
-            ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/main/",
-                "Source code."
-            ));
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                powered_by_egui_and_eframe(ui);
-                egui::warn_if_debug_build(ui);
+            ui.vertical(|ui| {
+                if let Some(panel) = self.panels.get_mut(self.panel_index) {
+                    if let Err(e) = panel.render(ui) {
+                        ui.code(format!("Error while rendering: {:?}", e));
+                    }
+                } else {
+                    ui.code("No panel selecte");
+                }
             });
         });
-
-
-        for panel in self.panels.iter_mut() {
-            panel.show(ctx);
-        }
     }
 
     /// Called by the frame work to save state before shutdown.

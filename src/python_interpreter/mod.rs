@@ -1,22 +1,21 @@
 mod bindings;
 
-use crate::utils::{EventHandler, Message, Mod};
-use pyo3::prelude::*;
-use pyo3::Python;
-use std::any::Any;
+use crate::statics::MESSAGE_BUS;
+use crate::utils::Message::PythonOutput;
+use crate::utils::{EventHandler, Message, MessageBus, Mod};
 use anyhow::anyhow;
+use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3::{py_run, Python};
+use std::any::Any;
+use std::sync::{Mutex, OnceLock};
+use eframe::egui::TextBuffer;
 use tracing::{error, info, trace, warn};
 
 #[derive(Default)]
-pub struct PythonInterpreterMod {}
-
-impl EventHandler for PythonInterpreterMod {
-    fn handle_evt(&self, e: &Message) -> anyhow::Result<()> {
-        Ok(())
-    }
+pub struct PythonInterpreterMod {
+    locals: Mutex<Option<Py<PyDict>>>,
 }
-
 
 #[pyfunction]
 fn log(text: &str, severity: i32) {
@@ -59,7 +58,7 @@ impl Mod for PythonInterpreterMod {
 
             // Insert foo into sys.modules
             py_modules.set_item("mod_extensions", m)?;
-            
+
             PyModule::from_code_bound(py, script, "bootstrap.py", "bootstrap")?;
             anyhow::Ok(())
         })?;
@@ -69,6 +68,40 @@ impl Mod for PythonInterpreterMod {
     }
 
     fn tick(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+impl EventHandler for PythonInterpreterMod {
+    fn handle_evt(&self, e: &Message) -> anyhow::Result<()> {
+        if let Message::ExecutePython { code, eval } = e {
+            info!("Executing code: {code}");
+            MESSAGE_BUS.dispatch(PythonOutput { output: code.clone() });
+
+            Python::with_gil(|py| {
+                let mut lock = self.locals.lock().unwrap();
+                let locals = lock.take().map(|it| it.into_bound(py))
+                    .unwrap_or_else(|| PyDict::new_bound(py));
+                
+                let result = if *eval {
+                    py.eval_bound(code.as_str(), None, None).map(|it| it.to_string())
+                } else {
+                    py.run_bound(code.as_str(), None, None).map(|_| "OK".to_string())
+                };
+                
+                match result {
+                    Ok(bound) => {
+                        MESSAGE_BUS.dispatch(PythonOutput { output: bound });
+                    }
+                    Err(err) => {
+                        MESSAGE_BUS.dispatch(PythonOutput { output: err.to_string() });
+                    }
+                }
+                
+                lock.replace(locals.unbind());
+            });
+        }
+
         Ok(())
     }
 }

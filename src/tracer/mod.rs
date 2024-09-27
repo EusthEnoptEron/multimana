@@ -299,6 +299,9 @@ impl EventHandler for Tracer {
 
                 info!("Input: {input_comp:#?}");
                 info!("Input Class: {:#?}", input_comp.class_hierarchy());
+            },
+            _ => {
+                
             }
         }
 

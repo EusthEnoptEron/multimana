@@ -15,13 +15,14 @@ libmem = "5.0.1"
 anyhow = "1.0.86"
 lazy_static = "1.5.0"
 tracing-chrome = "0.7.2"
-eframe = { version = "0.28.1", features = ["default_fonts", "persistence"] }
+eframe = { version = "0.29.0", features = ["default_fonts", "persistence"] }
 serde = { version = "1.0.204", features = ["derive"] }
-winit = "0.29.15"
+winit = "0.30.5"
 concurrent-queue = "2.5.0"
 either = "1.13.0"
 flagset = "0.4.6"
 pyo3 = { version = "0.22.3", features = ["anyhow"] }
+egui_extras = { version = "0.29.0", features = ["syntect"] }
 
 [lib]
 crate-type = ["cdylib"]
