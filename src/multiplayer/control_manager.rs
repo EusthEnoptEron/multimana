@@ -6,6 +6,7 @@ use manasdk::ai_module::AAIController;
 use manasdk::engine::{AController, APawn, APlayerController, UGameplayStatics, UWorld};
 use manasdk::py_char_base::APyCharBase;
 use manasdk::{AsObjectPointer, HasClassObject, UObjectPointer};
+use manasdk::engine_settings::{ETwoPlayerSplitScreenType, UGameMapsSettings};
 use manasdk::x21::{AACTPlayerController, AActAIController, AActGameState, ACharacterBase, USakuraBlueprintFunctionLibrary};
 use manasdk::x21_game_mode::APyX21GameMode;
 
@@ -15,7 +16,7 @@ struct State {
     active_claims: HashMap<String, ClaimRef>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ControlManager {
     state: Arc<RwLock<State>>,
 }
@@ -51,6 +52,19 @@ impl Claim {
 }
 
 impl ControlManager {
+    pub fn set_enabled(&self, enabled: bool) {
+        if let Ok(mut state) = self.state.write() {
+            state.enabled = enabled;
+
+            // Enable split screen
+            if let Some(settings) = UGameMapsSettings::get_game_maps_settings().try_get().ok() {
+                settings.b_use_splitscreen = enabled;
+                settings.b_offset_player_gamepad_ids = false;
+                settings.two_player_splitscreen_layout = ETwoPlayerSplitScreenType::Vertical;
+            }
+        }
+    }
+
     fn get_available_members(&self) -> Vec<&mut APyCharBase> {
         UWorld::get_world()
             .and_then(|world| UGameplayStatics::get_game_mode(world).try_get().ok())
@@ -74,6 +88,10 @@ impl ControlManager {
     pub fn claim(&self, player_id: u8, player_controller: UObjectPointer<AACTPlayerController>) -> Option<Claim> {
         let mut state = self.state.write().ok()?;
 
+        if player_controller.as_ref().is_none() {
+            return None;
+        }
+
         // Check if claim already exists
         if state.active_claims.values().any(|it| it.player_id == player_id) {
             return None;
@@ -83,24 +101,24 @@ impl ControlManager {
             let hero_id = member.get_hero_id().to_string().unwrap_or_default();
 
             if state.active_claims.get(&hero_id).is_none() {
-                let ai_controller = member.controller.as_ref()?.cast::<AActAIController>()?;
+                if let Some(ai_controller) = member.controller.as_ref()?.cast::<AActAIController>() {
+                    let claim = Claim {
+                        player_id,
+                        hero_id: hero_id.clone(),
+                        character: if state.enabled { Some(member.deref().into()) } else { None },
+                        player_controller,
+                        ai_controller: ai_controller.into(),
+                    };
 
-                let claim = Claim {
-                    player_id,
-                    hero_id: hero_id.clone(),
-                    character: if state.enabled { Some(member.deref().into()) } else { None },
-                    player_controller,
-                    ai_controller: ai_controller.into(),
-                };
+                    info!("Player {} claimed character {}", claim.player_id, claim.hero_id);
+                    state.active_claims.insert(hero_id, claim.get_ref());
 
-                info!("Player {} claimed character {}", claim.player_id, claim.hero_id);
-                state.active_claims.insert(hero_id, claim.get_ref());
+                    if state.enabled {
+                        self.ensure_claim(&claim, member);
+                    }
 
-                if state.enabled {
-                    self.ensure_claim(&claim, member);
+                    return Some(claim);
                 }
-
-                return Some(claim);
             }
         }
 
@@ -147,21 +165,20 @@ impl ControlManager {
 
         let mut player_controller_ref = claim.player_controller.clone();
         let player_controller = player_controller_ref.as_mut()?;
-        self.transfer_control(character, player_controller)
+        self.transfer_control(character, player_controller, |it| it.as_ref().map(|it| !it.is_player_controller()).unwrap_or_default())
     }
 
     fn ensure_evicted(&self, claim: &Claim, character: &APyCharBase) -> Option<()> {
         let mut ai_controller_ref = claim.ai_controller.clone();
         let ai_controller = ai_controller_ref.as_mut()?;
 
-        self.transfer_control(character, ai_controller)
+        self.transfer_control(character, ai_controller, |it| it.is_same(&claim.player_controller))
     }
 
-    fn transfer_control(&self, character: &APyCharBase, target_controller: &mut AController) -> Option<()> {
+    fn transfer_control(&self, character: &APyCharBase, target_controller: &mut AController, source_controller_check: impl FnOnce(UObjectPointer<AController>) -> bool) -> Option<()> {
         let is_bot = target_controller.is_a(AAIController::static_class());
-        
 
-        if character.controller != target_controller.deref().as_pointer() {
+        if character.controller != target_controller.deref().as_pointer() && source_controller_check(character.controller.clone()) {
             let game_state = UWorld::get_world()
                 .and_then(|world| UGameplayStatics::get_game_state(world).try_get().ok())
                 .and_then(|it| it.cast::<AActGameState>())?;
@@ -190,7 +207,7 @@ impl ControlManager {
                 }
             }
         }
-        
+
         Some(())
     }
 }

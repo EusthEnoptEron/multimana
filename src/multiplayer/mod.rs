@@ -15,12 +15,16 @@ use std::any::Any;
 use std::ffi::c_void;
 use std::sync::RwLock;
 use tracing::{error, info, instrument, warn};
+use manasdk::x21_game_mode::APyX21GameMode;
+use crate::multiplayer::control_manager::ControlManager;
+use crate::multiplayer::player_handler::PlayerHandler;
 
 #[derive(Default)]
 struct MultiplayerData {
     initialized: bool,
     exec_function: Option<TrampolineWrapper<FNativeFuncPtr>>,
-    pawn: UObjectPointer<APyCharBase>,
+    control_manager: ControlManager,
+    player_handlers: Vec<PlayerHandler>
 }
 
 #[derive(Default)]
@@ -72,28 +76,40 @@ impl Mod for MultiplayerMod {
                     function.exec_function as Address,
                     on_exec_function as Address,
                 )
-                .context("Unable to hook into exec function")?
-                .into()
+                    .context("Unable to hook into exec function")?
+                    .into()
             });
         info!("Hooked into exec function");
+
+
+        {
+            let mut inner = self.inner
+                .write()
+                .map_err(|_| anyhow!("Unable to create handlers"))?;
+
+            let control_manager = inner.control_manager.clone();
+            inner.player_handlers.push(PlayerHandler::new(1, control_manager.clone()));
+            inner.player_handlers.push(PlayerHandler::new(2, control_manager.clone()));
+            inner.player_handlers.push(PlayerHandler::new(3, control_manager.clone()));
+        }
+            
+
         Ok(())
     }
 
     fn tick(&self) -> Result<()> {
-        if self
-            .inner
-            .read()
-            .ok()
-            .context("Could not read data")?
-            .initialized
-        {
-            return Ok(());
-        }
-
+        let mut inner = self.inner.write().ok().context("Could not read data")?;
         let world = UWorld::get_world().context("World not found")?;
-        let player_controller = UGameplayStatics::get_player_controller(world, 0);
-        let pawn = UGameplayStatics::get_player_pawn(world, 0);
-
+        let enabled = UGameplayStatics::get_game_mode(world).try_get()?.cast::<APyX21GameMode>().map(|mode| {
+            !mode.is_main_menu_open && !mode.is_in_event_mode
+        }).unwrap_or_default();
+        
+        inner.control_manager.set_enabled(enabled);
+        
+        for handler in inner.player_handlers.iter_mut() {
+            handler.tick(world);
+        }
+        
         Ok(())
     }
 }
@@ -109,79 +125,14 @@ impl MultiplayerMod {
     }
 
     fn try_enable_split_screen(&self, pawn: &APawn, world: &UWorld) -> Result<()> {
-        // Enable split screen
-        info!("Getting settings");
-        let settings = UGameMapsSettings::get_game_maps_settings().try_get()?;
-        info!("Got settings");
-        settings.b_use_splitscreen = true;
-        settings.b_offset_player_gamepad_ids = false;
-        settings.two_player_splitscreen_layout = ETwoPlayerSplitScreenType::Vertical;
+ 
 
         info!("Creating player");
         let second_player = UGameplayStatics::create_player(world, 1, true)
             .try_get()
             .context("Unable to create second player")?;
         info!("Created player: {}", second_player.class_hierarchy());
-
-        info!("Creating array");
-        let mut actors = TFixedSizeArray::<&AActor, 50usize>::new();
-        //let mut actors = TArray::<&AActor>::default();
-        info!("Gettings actors");
-
-        UGameplayStatics::get_all_actors_of_class(
-            world,
-            APyCharBase::static_class().into(),
-            actors.as_mut(),
-        );
-
-        info!(
-            "Actor count: {} (capacity={})",
-            actors.len(),
-            actors.max_elements
-        );
-
-        if let Some(actor) = actors
-            .iter()
-            .find(|it| it.class.as_ref().unwrap().name() == "BP_P001c_C")
-        {
-            let pawn = actor
-                .cast::<APyCharBase>()
-                .context("Unable to cast actor to pawn")?;
-            let mut player_state = pawn.player_state.clone();
-
-            if let (Some(state), Some(next_target)) =
-                (second_player.player_state.as_ref(), player_state.as_ref())
-            {
-                USakuraBlueprintFunctionLibrary::exchange_player_state_unique_id(
-                    state,
-                    next_target,
-                );
-            } else {
-                error!("Whoopsie");
-            }
-
-            second_player.player_state = player_state.clone();
-            second_player.possess(pawn);
-
-            let game_state = UGameplayStatics::get_game_state(world)
-                .try_get()
-                .ok()
-                .and_then(|it| it.cast::<AActGameState>())
-                .context("Unable to get game state")?;
-
-            if let Some(state) = player_state
-                .as_mut()
-                .and_then(|it| it.cast_mut::<APyX21PlayerState>())
-            {
-                state.bit_set_b_is_a_bot(false);
-                game_state.register_player(state);
-            }
-
-            if let Ok(mut inner) = self.inner.write() {
-                inner.pawn = pawn.into();
-            }
-        }
-
+        
         Ok(())
     }
 }
