@@ -48,7 +48,9 @@ pub fn open_console() {
             let (non_blocking_file_appender, file_guard) =
                 tracing_appender::non_blocking(file_appender);
 
-            let (chrome_layer, chrome_guard) = ChromeLayerBuilder::new().include_args(true).build();
+            let (chrome_layer, chrome_guard) = ChromeLayerBuilder::new()
+                .include_args(true)
+                .build();
 
             let (tracer_filter, reload_handle) =
                 reload::Layer::new(Targets::new().with_target("tracer", Level::ERROR));

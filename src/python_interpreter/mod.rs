@@ -6,10 +6,9 @@ use crate::utils::{EventHandler, Message, MessageBus, Mod};
 use anyhow::anyhow;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use pyo3::{py_run, Python};
+use pyo3::Python;
 use std::any::Any;
-use std::sync::{Mutex, OnceLock};
-use eframe::egui::TextBuffer;
+use std::sync::{Mutex};
 use tracing::{error, info, trace, warn};
 
 #[derive(Default)]

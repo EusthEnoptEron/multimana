@@ -61,7 +61,15 @@ impl<T: AsRef<UObject>> PartialEq for UObjectPointer<T> {
     }
 }
 
+pub trait AsObjectPointer<T : AsRef<UObject>> {
+    fn as_pointer(&self) -> UObjectPointer<T>;
+}
 
+impl<T: AsRef<UObject>> AsObjectPointer<T> for &T{
+    fn as_pointer(&self) -> UObjectPointer<T> {
+        UObjectPointer(*self as *const T as *mut T)
+    }
+}
 
 impl<T> From<&T> for UObjectPointer<T>
 where
@@ -72,12 +80,21 @@ where
     }
 }
 
+impl<T> From<&mut T> for UObjectPointer<T>
+where
+    T: AsRef<UObject>,
+{
+    fn from(value: &mut T) -> Self {
+        UObjectPointer(value as &mut T as *mut T)
+    }
+}
 
 impl<T: AsRef<UObject>> Default for UObjectPointer<T> {
     fn default() -> Self {
         Self(std::ptr::null_mut())
     }
 }
+
 
 #[repr(C)]
 #[derive(Debug, Clone)]

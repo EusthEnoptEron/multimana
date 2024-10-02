@@ -1,3 +1,6 @@
+mod player_handler;
+mod control_manager;
+
 use crate::utils::{EventHandler, Message, Mod, TrampolineWrapper};
 use anyhow::{anyhow, Context, Result};
 use libmem::Address;
@@ -88,25 +91,8 @@ impl Mod for MultiplayerMod {
         }
 
         let world = UWorld::get_world().context("World not found")?;
-
         let player_controller = UGameplayStatics::get_player_controller(world, 0);
         let pawn = UGameplayStatics::get_player_pawn(world, 0);
-
-        if let (Some(controller), Some(pawn)) = (player_controller.as_ref(), pawn.as_ref()) {
-            if pawn.class.as_ref().unwrap().name().starts_with("BP_P00") {
-                info!("Initializing");
-                self.inner
-                    .write()
-                    .ok()
-                    .context("Could not lock data")?
-                    .initialized = true;
-                if let Err(e) = self.try_enable_split_screen(pawn, world) {
-                    warn!("Failed to enable split screen: {:?}", e);
-                } else {
-                    info!("Split screen activated.");
-                }
-            }
-        }
 
         Ok(())
     }
