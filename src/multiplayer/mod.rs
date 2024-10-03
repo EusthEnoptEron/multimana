@@ -8,7 +8,7 @@ use manasdk::core_u_object::UFunction;
 use manasdk::engine::{AActor, APawn, UGameplayStatics, UWorld};
 use manasdk::engine_settings::{ETwoPlayerSplitScreenType, UGameMapsSettings};
 use manasdk::py_char_base::APyCharBase;
-use manasdk::x21::{AActGameState, USakuraBlueprintFunctionLibrary};
+use manasdk::x21::{AActGameState, USakuraBlueprintFunctionLibrary, USakuraEventFunctionLibrary, USakuraEventStateFunctionLibrary};
 use manasdk::x21_player_state::APyX21PlayerState;
 use manasdk::{FFrame, FNativeFuncPtr, HasClassObject, TFixedSizeArray, UObject, UObjectPointer};
 use std::any::Any;
@@ -100,8 +100,9 @@ impl Mod for MultiplayerMod {
     fn tick(&self) -> Result<()> {
         let mut inner = self.inner.write().ok().context("Could not read data")?;
         let world = UWorld::get_world().context("World not found")?;
+        
         let enabled = UGameplayStatics::get_game_mode(world).try_get()?.cast::<APyX21GameMode>().map(|mode| {
-            !mode.is_main_menu_open && !mode.is_in_event_mode
+            !mode.is_main_menu_open && !USakuraEventFunctionLibrary::is_playing_non_playable_event(world)
         }).unwrap_or_default();
         
         inner.control_manager.set_enabled(enabled);
