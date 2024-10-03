@@ -239,6 +239,10 @@ impl TUObjectArray {
             self.num_elements as usize
         }
     }
+    
+    pub fn is_valid_index(&self, index: i32) -> bool {
+        index < self.num_elements && index >= 0
+    }
 
     pub fn get_by_index(&self, index: usize) -> Option<&UObject> {
         let chunk_index = index / Self::ELEMENTS_PER_CHUNK;

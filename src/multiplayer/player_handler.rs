@@ -39,13 +39,18 @@ impl PlayerHandler {
             
             return;
         } else {
-            if self.controller.as_ref().is_none() {
+            if self.controller.as_ref().take_if(|it| it.is_valid()).is_none() {
                 if world.name() == "MAP_AsyncPersistent" {
                     let controller = UGameplayStatics::create_player(world, self.player_id as i32, true).try_get().ok()
+                        .or_else(|| UGameplayStatics::get_player_controller(world, self.player_id as i32).try_get().ok())
+                        .and_then(|it| {
+                            info!("Created {}", it.class_hierarchy());
+                            Some(it)
+                        })
                         .and_then(|it| it.cast::<AACTPlayerController>())
                         .map(|it| UObjectPointer::from(it))
                         .unwrap_or_default();
-                    
+
                     info!("Created controller: {controller:?}");
                     self.controller = controller;
                 }

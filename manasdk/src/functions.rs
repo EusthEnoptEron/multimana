@@ -158,6 +158,25 @@ impl UObject {
             .map(|it| it.is_subclass_of(class))
             .unwrap_or_default()
     }
+
+    /// Checks if the pointer is valid
+    /// 
+    /// Translation of IsValidLowLevel
+    pub fn is_valid(&self) -> bool {
+        if self.index == -1 {
+            return false;
+        }
+
+        if !UObject::all().is_valid_index(self.index) {
+            return false;
+        }
+        
+        if let Some(found_obj) = UObject::all().get_by_index(self.index as usize) {
+            found_obj as *const UObject == self as *const UObject
+        } else {
+            false
+        }
+    }
 }
 
 type ProcessEventFn = extern "C" fn(*const UObject, *const UFunction, *mut c_void);

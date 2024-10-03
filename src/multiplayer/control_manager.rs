@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
-use tracing::info;
+use tracing::{error, info, warn};
 use manasdk::ai_module::AAIController;
-use manasdk::engine::{AController, APawn, APlayerController, UGameplayStatics, UWorld};
+use manasdk::engine::{AController, APawn, APlayerController, APlayerState, UGameplayStatics, UWorld};
 use manasdk::py_char_base::APyCharBase;
 use manasdk::{AsObjectPointer, HasClassObject, UObjectPointer};
 use manasdk::engine_settings::{ETwoPlayerSplitScreenType, UGameMapsSettings};
@@ -62,6 +62,12 @@ impl ControlManager {
                 settings.b_offset_player_gamepad_ids = false;
                 settings.two_player_splitscreen_layout = ETwoPlayerSplitScreenType::Vertical;
             }
+            
+            for member in self.get_available_members() {
+                if let Some(camera_cmp) = member.camera_cmp.as_mut() {
+                    camera_cmp.bit_set_b_constrain_aspect_ratio(false);
+                }
+            }
         }
     }
 
@@ -94,14 +100,18 @@ impl ControlManager {
 
         // Check if claim already exists
         if state.active_claims.values().any(|it| it.player_id == player_id) {
+            error!("Tried to acquire new claim even though the controller already had one!");
             return None;
         }
 
         for member in self.get_available_members() {
             let hero_id = member.get_hero_id().to_string().unwrap_or_default();
 
+            // If no one else has claimed this hero...
             if state.active_claims.get(&hero_id).is_none() {
+                // ...and the hero is not ai-controlled...
                 if let Some(ai_controller) = member.controller.as_ref()?.cast::<AActAIController>() {
+                    // ...give it to the claimer!
                     let claim = Claim {
                         player_id,
                         hero_id: hero_id.clone(),
@@ -126,22 +136,28 @@ impl ControlManager {
     }
 
     /// Renews a claim to a character.
-    pub fn renew_claim(&self, mut claim: Claim) -> Option<Claim> {
-        let matching_member = self.get_available_members().into_iter().find(|it| it.get_hero_id().to_string().unwrap_or_default() == claim.hero_id);
-        if let Some(member) = matching_member {
-            if self.state.read().map(|it| it.enabled).unwrap_or_default() {
-                claim.character = Some(member.into());
+    pub fn renew_claim(&self, claim: Claim) -> Option<Claim> {
+        if let Some(mut claim) = self.sanity_check(claim) {
+            let matching_member = self.get_available_members().into_iter().find(|it| it.get_hero_id().to_string().unwrap_or_default() == claim.hero_id);
+            if let Some(member) = matching_member {
+                // Only keep a reference to the character when we're enabled
+                if self.state.read().map(|it| it.enabled).unwrap_or_default() {
+                    claim.character = Some(member.into());
 
-                self.ensure_claim(&claim, member);
-            } else {
-                if let Some(character) = claim.character.take().and_then(|it| it.try_get().ok()) {
-                    self.ensure_evicted(&claim, character);
+                    self.ensure_claim(&claim, member);
+                } else {
+                    if let Some(character) = claim.character.take().and_then(|it| it.try_get().ok()) {
+                        self.ensure_evicted(&claim, character);
+                    }
                 }
-            }
 
-            Some(claim)
+                Some(claim)
+            } else {
+                // Team member does no longer exist, so evict
+                self.return_claim(claim);
+                None
+            }
         } else {
-            // Team member does no longer exist, so evict
             None
         }
     }
@@ -156,6 +172,27 @@ impl ControlManager {
         if let Some(character) = claim.character.clone().and_then(|it| it.try_get().ok()) {
             self.ensure_evicted(&claim, character);
         }
+    }
+
+    fn sanity_check(&self, claim: Claim) -> Option<Claim> {
+        if let (Some(expected_character), Some(player_controller)) = (&claim.character, claim.player_controller.as_ref()) {
+            let actual_character = &player_controller.pawn;
+            if !expected_character.is_same(actual_character) && actual_character.as_ref().is_some() {
+                // Not controlling who we are supposed to be controlling!
+
+                if let Some(actual_character_ref) = actual_character.as_ref().and_then(|it| it.cast::<APyCharBase>()) {
+                    info!("Player is controlling wrong character... returning it to AI!");
+                    self.ensure_evicted(&claim, actual_character_ref);
+                }
+
+                info!("Forcefully returned claim");
+                let mut state = self.state.write().expect("Unable to write to state");
+                state.active_claims.remove(&claim.hero_id);
+                return None;
+            }
+        }
+
+        Some(claim)
     }
 
     fn ensure_claim(&self, claim: &Claim, character: &APyCharBase) -> Option<()> {
@@ -187,14 +224,20 @@ impl ControlManager {
             let character_state_opt = character.player_state.as_ref();
 
             if let (Some(controller_state), Some(character_state)) = (controller_state_opt, character_state_opt) {
-                info!("Possessing character {}", character.name.to_string().unwrap_or_default());
+                info!("Possessing character {} (is_bot={is_bot})", character.name.to_string().unwrap_or_default());
                 USakuraBlueprintFunctionLibrary::exchange_player_state_unique_id(
                     controller_state,
                     character_state,
                 );
 
+                let old_state = target_controller.player_state.clone();
+                let other_controller = character.controller.clone();
                 target_controller.player_state = character_state.into();
                 target_controller.possess(character);
+                
+                if let Some(ctrl) = other_controller.clone().try_get().ok() {
+                    ctrl.player_state = old_state;
+                }
 
                 if let Ok(mut_state) = UObjectPointer::from(character_state).try_get() {
                     mut_state.bit_set_b_is_a_bot(is_bot)
