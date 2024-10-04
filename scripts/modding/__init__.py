@@ -28,26 +28,32 @@ ue.log = log_info
 ue.log_warning = log_warn
 ue.log_error = log_error
 
-from actor.battle_area.act_battle_area import PyActBattleArea
-from unreal_engine.classes import PlayerController
-from unreal_engine.classes import CommonUtils
-from char.py_char_base import PyCharBase
 
-import modding.utils
-
-get_local_controlled_pawn_original = CommonUtils.GetLocalControlledPawn
-
-def is_local_controlled(self, actor):
-    return actor.Controller.is_a(PlayerController)
+# import our overrides
+import modding.change_target_handling
+import modding.battle_area_handling
 
 
-def get_local_controlled_pawn(world):
-    match = utils.search_stack_for_parameter(lambda x: x and hasattr(x, 'is_a') and (x.is_a(PlayerController) or x.is_a(PyCharBase)))
-    if match is not None:
-        return match
-
-    return get_local_controlled_pawn_original(world)
-
-
-# CommonUtils.GetLocalControlledPawn = get_local_controlled_pawn
-PyActBattleArea.is_local_controlled = is_local_controlled
+# act_battle_area_receive_begin_play = PyActBattleArea.ReceiveBeginPlay
+# 
+# def ActBattleArea_ReceiveBeginPlay(self):
+#     ue.log_error('ReceiveBeginPlay')
+#     act_battle_area_receive_begin_play(self)
+# 
+# PyActBattleArea.ReceiveBeginPlay = ActBattleArea_ReceiveBeginPlay
+# 
+# 
+# 
+# 
+# 
+# from x21.ui.ui_change_target import UIChangeTarget
+# from unreal_engine.structs import GameplayEventData, GameplayTag
+# 
+# on_action_input = UIChangeTarget.on_action_input
+# 
+# def on_action_input_override(self, GameplayTag: GameplayTag, IsPressed: bool):
+#     ue.log_error(f'on_action_input: {GameplayTag}, {IsPressed}')
+#     on_action_input(self, GameplayTag, IsPressed)
+# 
+# UIChangeTarget.on_action_input = on_action_input_override
+# 

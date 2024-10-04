@@ -9,6 +9,7 @@ use manasdk::{AsObjectPointer, HasClassObject, UObjectPointer};
 use manasdk::engine_settings::{ETwoPlayerSplitScreenType, UGameMapsSettings};
 use manasdk::x21::{AACTPlayerController, AActAIController, AActGameState, ACharacterBase, USakuraBlueprintFunctionLibrary};
 use manasdk::x21_game_mode::APyX21GameMode;
+use crate::utils::{EventHandler, LoggableOption, Message};
 
 #[derive(Default)]
 struct State {
@@ -94,7 +95,7 @@ impl ControlManager {
     pub fn claim(&self, player_id: u8, player_controller: UObjectPointer<AACTPlayerController>) -> Option<Claim> {
         let mut state = self.state.write().ok()?;
 
-        if player_controller.as_ref().is_none() {
+        if player_controller.as_ref().take_if(|it| !it.b_forbid_setting_rotation_from_pawn).is_none() {
             return None;
         }
 
@@ -109,7 +110,7 @@ impl ControlManager {
 
             // If no one else has claimed this hero...
             if state.active_claims.get(&hero_id).is_none() {
-                // ...and the hero is not ai-controlled...
+                // ...and the hero is  ai-controlled...
                 if let Some(ai_controller) = member.controller.as_ref()?.cast::<AActAIController>() {
                     // ...give it to the claimer!
                     let claim = Claim {
@@ -171,6 +172,8 @@ impl ControlManager {
 
         if let Some(character) = claim.character.clone().and_then(|it| it.try_get().ok()) {
             self.ensure_evicted(&claim, character);
+        } else {
+            info!("...but they are not in control of any?");
         }
     }
 
@@ -207,47 +210,58 @@ impl ControlManager {
 
     fn ensure_evicted(&self, claim: &Claim, character: &APyCharBase) -> Option<()> {
         let mut ai_controller_ref = claim.ai_controller.clone();
-        let ai_controller = ai_controller_ref.as_mut()?;
+        let ai_controller = ai_controller_ref.as_mut().with_log_if_none("No AI controller found in claim!")?;
 
         self.transfer_control(character, ai_controller, |it| it.is_same(&claim.player_controller))
     }
 
-    fn transfer_control(&self, character: &APyCharBase, target_controller: &mut AController, source_controller_check: impl FnOnce(UObjectPointer<AController>) -> bool) -> Option<()> {
+    fn transfer_control(&self, next_target: &APyCharBase, target_controller: &mut AController, source_controller_check: impl FnOnce(UObjectPointer<AController>) -> bool) -> Option<()> {
         let is_bot = target_controller.is_a(AAIController::static_class());
 
-        if character.controller != target_controller.deref().as_pointer() && source_controller_check(character.controller.clone()) {
+        if next_target.controller != target_controller.deref().as_pointer() && source_controller_check(next_target.controller.clone()) {
             let game_state = UWorld::get_world()
                 .and_then(|world| UGameplayStatics::get_game_state(world).try_get().ok())
                 .and_then(|it| it.cast::<AActGameState>())?;
 
-            let controller_state_opt = target_controller.player_state.as_ref();
-            let character_state_opt = character.player_state.as_ref();
+            let mut curr_target_state_ref = target_controller.player_state.clone();
+            let mut next_target_state_ref = next_target.player_state.clone();
 
-            if let (Some(controller_state), Some(character_state)) = (controller_state_opt, character_state_opt) {
-                info!("Possessing character {} (is_bot={is_bot})", character.name.to_string().unwrap_or_default());
+            if let (Some(curr_target_state), Some(next_target_state)) = (curr_target_state_ref.clone().try_get().ok(), next_target_state_ref.clone().try_get().ok()) {
+                
+                info!("Possessing character {} (is_bot={is_bot}) ({} -> {})", next_target.name.to_string().unwrap_or_default(), 
+                    curr_target_state.name().to_string(),
+                    next_target_state.name().to_string()
+                );
+                
                 USakuraBlueprintFunctionLibrary::exchange_player_state_unique_id(
-                    controller_state,
-                    character_state,
+                    curr_target_state,
+                    next_target_state,
                 );
 
-                let old_state = target_controller.player_state.clone();
-                let other_controller = character.controller.clone();
-                target_controller.player_state = character_state.into();
-                target_controller.possess(character);
+                let other_controller = next_target.controller.clone();
+                target_controller.player_state = next_target_state_ref.clone();
+                target_controller.possess(next_target);
                 
                 if let Some(ctrl) = other_controller.clone().try_get().ok() {
-                    ctrl.player_state = old_state;
+                    ctrl.player_state = curr_target_state_ref.clone();
+                    game_state.un_register_player(curr_target_state)
                 }
 
-                if let Ok(mut_state) = UObjectPointer::from(character_state).try_get() {
+                if let Some(mut_state) = next_target_state_ref.as_mut() {
                     mut_state.bit_set_b_is_a_bot(is_bot)
                 }
 
                 if is_bot {
-                    game_state.un_register_player(character_state);
+                    game_state.un_register_player(next_target_state);
                 } else {
-                    game_state.register_player(character_state);
+                    game_state.register_player(next_target_state);
                 }
+                
+                if let Some(ai_controller) = target_controller.cast::<AActAIController>() {
+                    ai_controller.register_crowd_agent();
+                }
+            } else {
+                warn!("Unable to get states!");
             }
         }
 

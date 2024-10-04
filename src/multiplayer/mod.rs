@@ -124,6 +124,15 @@ impl MultiplayerMod {
             }
         });
     }
+    
+    pub fn on_player_one_is_changing_heroes(&self, hero_id: &str) -> Result<()> {
+        let mut inner = self.inner.write().ok().context("Could not read data")?;
+        for handler in inner.player_handlers.iter_mut() {
+            handler.on_player_changing(hero_id);
+        }
+        
+        Ok(())
+    }
 
     fn try_enable_split_screen(&self, pawn: &APawn, world: &UWorld) -> Result<()> {
  

@@ -51,6 +51,7 @@ impl PlayerHandler {
                         .map(|it| UObjectPointer::from(it))
                         .unwrap_or_default();
 
+
                     info!("Created controller: {controller:?}");
                     self.controller = controller;
                 }
@@ -64,4 +65,11 @@ impl PlayerHandler {
             self.current_claim = self.control_manager.claim(self.player_id, self.controller.clone());
         }
     }
+    
+    pub fn on_player_changing(&mut self, new_hero: &str) {
+        if let Some(claim) = self.current_claim.take_if(|it| it.hero_id() == new_hero) {
+            info!("Player is changing into our character... returning it immediately!");
+            self.control_manager.return_claim(claim);
+        }
+    } 
 }

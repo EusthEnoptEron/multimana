@@ -10,6 +10,7 @@ use pyo3::Python;
 use std::any::Any;
 use std::sync::{Mutex};
 use tracing::{error, info, trace, warn};
+use crate::multiplayer::MultiplayerMod;
 
 #[derive(Default)]
 pub struct PythonInterpreterMod {
@@ -23,6 +24,14 @@ fn log(text: &str, severity: i32) {
         1 => warn!("{text}"),
         _ => trace!("{text}"),
     }
+}
+
+#[pyfunction]
+fn on_hero_changing(hero_id: &str) {
+   info!("Hero is changing to: {}", hero_id);
+    let _ = MultiplayerMod::call_in_place(|it| {
+        it.on_player_one_is_changing_heroes(hero_id)
+    });
 }
 
 impl Mod for PythonInterpreterMod {
@@ -50,6 +59,7 @@ impl Mod for PythonInterpreterMod {
             // Create new module
             let m = PyModule::new_bound(py, "mod_extensions")?;
             m.add_function(wrap_pyfunction!(log, &m)?)?;
+            m.add_function(wrap_pyfunction!(on_hero_changing, &m)?)?;
 
             // Import and get sys.modules
             let sys = PyModule::import_bound(py, "sys")?;

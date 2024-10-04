@@ -113,7 +113,6 @@ pub enum Message {
     LogPlayerPawn,
     ExecutePython { code: String, eval: bool },
     PythonOutput { output: String }
-    
 }
 
 
@@ -121,10 +120,24 @@ pub trait Loggable {
     fn and_log_if_err(self);
 }
 
+pub trait LoggableOption {
+    fn with_log_if_none(self, msg: &str) -> Self;
+}
+
 impl<E> Loggable for Result<(), E> where E : Debug {
     fn and_log_if_err(self) {
         if let Err(e) = self {
             error!("{e:?}");
         }
+    }
+}
+
+impl<T> LoggableOption for Option<T> {
+    fn with_log_if_none(self, msg: &str) -> Self {
+        if self.is_none() {
+            error!("{msg}");
+        }
+        
+        self
     }
 }
