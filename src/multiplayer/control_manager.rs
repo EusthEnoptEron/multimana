@@ -7,7 +7,7 @@ use manasdk::engine::{AController, APawn, APlayerController, APlayerState, UGame
 use manasdk::py_char_base::APyCharBase;
 use manasdk::{AsObjectPointer, HasClassObject, UObjectPointer};
 use manasdk::engine_settings::{ETwoPlayerSplitScreenType, UGameMapsSettings};
-use manasdk::x21::{AACTPlayerController, AActAIController, AActGameState, ACharacterBase, USakuraBlueprintFunctionLibrary};
+use manasdk::x21::{AACTPlayerController, AActAIController, AActGameState, ACharacterBase, UActUIFunctionLibrary, USakuraBlueprintFunctionLibrary};
 use manasdk::x21_game_mode::APyX21GameMode;
 use crate::utils::{EventHandler, LoggableOption, Message};
 
@@ -95,7 +95,7 @@ impl ControlManager {
     pub fn claim(&self, player_id: u8, player_controller: UObjectPointer<AACTPlayerController>) -> Option<Claim> {
         let mut state = self.state.write().ok()?;
 
-        if player_controller.as_ref().take_if(|it| !it.b_forbid_setting_rotation_from_pawn).is_none() {
+        if player_controller.as_ref().take_if(|it|!it.b_forbid_setting_rotation_from_pawn).is_none() {
             return None;
         }
 
@@ -227,12 +227,12 @@ impl ControlManager {
             let mut next_target_state_ref = next_target.player_state.clone();
 
             if let (Some(curr_target_state), Some(next_target_state)) = (curr_target_state_ref.clone().try_get().ok(), next_target_state_ref.clone().try_get().ok()) {
-                
-                info!("Possessing character {} (is_bot={is_bot}) ({} -> {})", next_target.name.to_string().unwrap_or_default(), 
+
+                info!("Possessing character {} (is_bot={is_bot}) ({} -> {})", next_target.name.to_string().unwrap_or_default(),
                     curr_target_state.name().to_string(),
                     next_target_state.name().to_string()
                 );
-                
+
                 USakuraBlueprintFunctionLibrary::exchange_player_state_unique_id(
                     curr_target_state,
                     next_target_state,
@@ -256,7 +256,7 @@ impl ControlManager {
                 } else {
                     game_state.register_player(next_target_state);
                 }
-                
+
                 if let Some(ai_controller) = target_controller.cast::<AActAIController>() {
                     ai_controller.register_crowd_agent();
                 }

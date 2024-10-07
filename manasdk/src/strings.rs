@@ -1,7 +1,8 @@
+use std::fmt::{Display, Formatter};
 use std::ops::AddAssign;
 use tracing::info;
-use widestring::WideStr;
-use crate::{FName, FNameEntry, FNamePool};
+use widestring::{decode_utf16_lossy, WideStr};
+use crate::{FName, FNameEntry, FNamePool, FString, FText};
 
 #[derive(Copy, Clone, Debug)]
 pub enum UnrealString<'a> {
@@ -83,5 +84,19 @@ impl FName {
         } else {
             Some(output)
         }
+    }
+}
+
+
+impl Display for FString {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let str = decode_utf16_lossy(self.data.iter().copied()).collect::<String>();
+        write!(f, "{str}")
+    }
+}
+
+impl Display for FText {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        unsafe { write!(f, "{}", self.text_data.as_ref().map(|it| it.text_source.to_string()).unwrap_or_default()) }
     }
 }

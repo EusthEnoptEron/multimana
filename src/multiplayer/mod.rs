@@ -1,22 +1,24 @@
 mod player_handler;
 mod control_manager;
+mod input_manager;
 
 use crate::utils::{EventHandler, Message, Mod, TrampolineWrapper};
 use anyhow::{anyhow, Context, Result};
 use libmem::Address;
 use manasdk::core_u_object::UFunction;
-use manasdk::engine::{AActor, APawn, UGameplayStatics, UWorld};
+use manasdk::engine::{AActor, APawn, UEngine, UGameEngine, UGameViewportClient, UGameplayStatics, UWorld};
 use manasdk::engine_settings::{ETwoPlayerSplitScreenType, UGameMapsSettings};
 use manasdk::py_char_base::APyCharBase;
 use manasdk::x21::{AActGameState, USakuraBlueprintFunctionLibrary, USakuraEventFunctionLibrary, USakuraEventStateFunctionLibrary};
 use manasdk::x21_player_state::APyX21PlayerState;
-use manasdk::{FFrame, FNativeFuncPtr, HasClassObject, TFixedSizeArray, UObject, UObjectPointer};
+use manasdk::{EClassCastFlags, FFrame, FNativeFuncPtr, HasClassObject, TFixedSizeArray, UObject, UObjectPointer};
 use std::any::Any;
 use std::ffi::c_void;
 use std::sync::RwLock;
 use tracing::{error, info, instrument, warn};
 use manasdk::x21_game_mode::APyX21GameMode;
 use crate::multiplayer::control_manager::ControlManager;
+use crate::multiplayer::input_manager::InputManager;
 use crate::multiplayer::player_handler::PlayerHandler;
 
 #[derive(Default)]
@@ -59,7 +61,10 @@ impl Mod for MultiplayerMod {
 
         let function: &UFunction = UObject::find_function(|it| it.name() == "ExecutePythonScript")
             .context("Unable to find entry function")?;
-
+        
+        // ####################
+        // # Hooking OnExec
+        // ####################
         fn on_exec_function(context: &UObject, stack: &FFrame, result: *mut c_void) {
             let _ = MultiplayerMod::call_in_place(|this| {
                 this.on_process_event(context, stack, result);
@@ -79,9 +84,13 @@ impl Mod for MultiplayerMod {
                     .context("Unable to hook into exec function")?
                     .into()
             });
+
+        // ####################
+        // # Hooking Inputs
+        // ####################
+        let _ = InputManager::instance();
+        
         info!("Hooked into exec function");
-
-
         {
             let mut inner = self.inner
                 .write()
@@ -92,8 +101,7 @@ impl Mod for MultiplayerMod {
             inner.player_handlers.push(PlayerHandler::new(2, control_manager.clone()));
             inner.player_handlers.push(PlayerHandler::new(3, control_manager.clone()));
         }
-            
-
+        
         Ok(())
     }
 
@@ -135,8 +143,6 @@ impl MultiplayerMod {
     }
 
     fn try_enable_split_screen(&self, pawn: &APawn, world: &UWorld) -> Result<()> {
- 
-
         info!("Creating player");
         let second_player = UGameplayStatics::create_player(world, 1, true)
             .try_get()

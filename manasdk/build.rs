@@ -30,6 +30,8 @@ fn main() {
         ("FText", None),
         ("FString", None),
         ("FName", None),
+        ("FInputKeyEventArgs", Some("engine")),
+        ("FKey", Some("input_core")),
     ];
     
     let excluded_classes = exclusions.iter().map(|it| it.0).collect::<Vec<_>>();

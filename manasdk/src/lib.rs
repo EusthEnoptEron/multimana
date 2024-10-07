@@ -2,7 +2,7 @@
 
 use std::cell::LazyCell;
 use std::ffi::c_void;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::LazyLock;
@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 use bitfield::bitfield;
 use flagset::FlagSet;
 use tracing::info;
-use widestring::WideChar;
+use widestring::{decode_utf16_lossy, WideChar};
 
 pub use collections::*;
 pub use enums::*;
@@ -61,11 +61,11 @@ impl<T: AsRef<UObject>> PartialEq for UObjectPointer<T> {
     }
 }
 
-pub trait AsObjectPointer<T : AsRef<UObject>> {
+pub trait AsObjectPointer<T: AsRef<UObject>> {
     fn as_pointer(&self) -> UObjectPointer<T>;
 }
 
-impl<T: AsRef<UObject>> AsObjectPointer<T> for &T{
+impl<T: AsRef<UObject>> AsObjectPointer<T> for &T {
     fn as_pointer(&self) -> UObjectPointer<T> {
         UObjectPointer(*self as *const T as *mut T)
     }
@@ -144,6 +144,12 @@ impl From<FScriptName> for FName {
     }
 }
 
+impl Display for FName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string().unwrap_or_default())
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct FString {
@@ -160,12 +166,21 @@ impl<UClass, T> From<&T> for TSubclassOf<UClass> {
     }
 }
 
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct FTextData {
+    _padding: [u8; 0x28],
+    pub text_source: FString,
+}
+
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct FText {
-    pub text_data: *const c_void,
+    pub text_data: *const FTextData,
     _padding: [u8; 16],
 }
+
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -235,6 +250,27 @@ pub struct TSoftClassPtr<T> {
     pub pointer: TLazyObjectPtr<FSoftObjectPath>,
 }
 
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct TSharedPtr<T> {
+    pub obj: *const T,
+    pub _shared_reference_count: *const FReferenceControllerBase,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct FReferenceControllerBase {
+    pub shared_reference_count: i32,
+    pub weak_reference_count: i32,
+}
+
+impl<T> TSharedPtr<T> {
+    pub fn as_ref(&self) -> Option<&T> {
+        unsafe {
+            self.obj.as_ref()
+        }
+    }
+}
 
 pub type FNativeFuncPtr = fn(context: UObjectPointer<UObject>, stack: &FFrame, result: *mut c_void);
 
@@ -267,7 +303,6 @@ impl<'a> FFrame<'a> {
         }
     }
 }
-
 
 
 #[repr(C)]
@@ -315,6 +350,21 @@ impl UEngine {
         }
 
         CACHE.with(|it| it.deref().clone())
+    }
+}
+
+
+pub fn is_bit_set(value: u8, bit_offset: u8) -> bool {
+    let mask = 0b00000001u8 << bit_offset;
+    (value & mask) != 0
+}
+
+pub fn set_bit(value: u8, bit_offset: u8, is_set: bool) {
+    let mask = 0b00000001u8 << bit_offset;
+    if is_set {
+        value | mask;
+    } else {
+        value & !mask;
     }
 }
 
