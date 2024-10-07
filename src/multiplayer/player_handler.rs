@@ -3,6 +3,7 @@ use manasdk::engine::{UGameplayStatics, UWorld};
 use manasdk::UObjectPointer;
 use manasdk::x21::{AACTPlayerController};
 use crate::multiplayer::control_manager::{Claim, ControlManager};
+use crate::multiplayer::input_manager::InputManager;
 
 pub struct PlayerHandler {
     /// The id of the player (1-3)
@@ -18,7 +19,7 @@ pub struct PlayerHandler {
 impl PlayerHandler {
     pub fn new(player_id: u8, control_manager: ControlManager) -> Self {
         Self { player_id,
-            connected: player_id == 1,
+            connected: false,
             controller: UObjectPointer::default(),
             control_manager,
             current_claim: None
@@ -26,6 +27,8 @@ impl PlayerHandler {
     }
 
     pub fn tick(&mut self, world: &UWorld) {
+        self.connected = InputManager::instance().get_controller_state(self.player_id).is_some();
+        
         // Handle the condition when we don't multiplayer
         if !self.connected {
             if let Some(claim) = self.current_claim.take() {

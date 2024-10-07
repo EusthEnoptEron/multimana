@@ -5,6 +5,8 @@ use manasdk::{EClassCastFlags, HasClassObject, UObject};
 use std::ffi::c_void;
 use std::ops::Deref;
 use std::sync::LazyLock;
+use rusty_xinput::{xinput_get_state, XInputHandle, XInputState, XInputUsageError};
+use tracing::warn;
 
 const INPUT_KEY_IDX: usize = 0x48 / 8;
 const INPUT_AXIS_IDX: usize = 0x50 / 8;
@@ -27,12 +29,14 @@ static INPUT_MANAGER: LazyLock<InputManager> = LazyLock::new(|| {
     }
 
     InputManager {
-        vmt: vmt
+        vmt: vmt,
+        xinput: XInputHandle::load_default().expect("Unable to load xinput")
     }
 });
 
 pub struct InputManager {
     vmt: Vmt,
+    xinput: XInputHandle
 }
 
 unsafe impl Send for InputManager {}
@@ -53,5 +57,18 @@ unsafe fn on_input_axis(this: &mut UScriptViewportClient, in_viewport: *const c_
 impl InputManager {
     pub fn instance() -> &'static Self {
         INPUT_MANAGER.deref()
+    }
+    
+    pub fn get_controller_state(&self, idx: u8) -> Option<XInputState> {
+        match self.xinput.get_state(idx as u32) {
+            Ok(state) => { Some(state) }
+            Err(XInputUsageError::DeviceNotConnected) => {
+                None
+            }
+            Err(e) => {
+                warn!("XInput complained: {e:?}");
+                None
+            }
+        }
     }
 }
