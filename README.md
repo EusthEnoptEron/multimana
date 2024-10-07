@@ -5,7 +5,9 @@
 This is a work-in-progress highly experimental multiplayer mod for Visions of Mana.
 It is not yet usable and might never see completion, but it may already be interesting as a point of reference.
 
-## Current State
+![](meta/preview.gif)
+
+## Current State ([Overview](https://github.com/users/EusthEnoptEron/projects/1/views/1))
 
 - The current version has only been tested with the trial version.
 - Arbitrary Rust & Python code can be injected and executed, and can interact with the runtime.
