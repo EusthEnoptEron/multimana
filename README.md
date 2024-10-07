@@ -7,9 +7,12 @@ It is not yet usable and might never see completion, but it may already be inter
 
 ## Current State
 
+- The current version has only been tested with the trial version.
 - Arbitrary Rust & Python code can be injected and executed, and can interact with the runtime.
-- A second player will automatically be injected and takes control of a pawn. Most of the game systems are broken, though.
+- P2-P4 are automatically injected and take control of a hero of their own.
+- Screen splits and unsplits as required.
 - The python script code of the game has been extracted and restored.
+- REPL for development.
 
 
 ## Building
