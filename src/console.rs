@@ -44,7 +44,7 @@ pub fn open_console() {
             let ansi_support_enabled = nu_ansi_term::enable_ansi_support().is_ok();
 
             // Initialize the tracing subscriber with both console and file logging
-            let file_appender = RollingFileAppender::new(Rotation::NEVER, ".", "log_output.log");
+            let file_appender = RollingFileAppender::new(Rotation::DAILY, ".", "log_output.log");
             let (non_blocking_file_appender, file_guard) =
                 tracing_appender::non_blocking(file_appender);
 
