@@ -32,6 +32,7 @@ ue.log_error = log_error
 # import our overrides
 import modding.change_target_handling
 import modding.battle_area_handling
+import modding.enemy_handling
 
 
 # act_battle_area_receive_begin_play = PyActBattleArea.ReceiveBeginPlay
