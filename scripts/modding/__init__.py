@@ -34,6 +34,7 @@ import modding.change_player_handling
 import modding.battle_area_handling
 import modding.enemy_handling
 import modding.contextual_player_controller
+import modding.damage_handling
 
 
 # act_battle_area_receive_begin_play = PyActBattleArea.ReceiveBeginPlay

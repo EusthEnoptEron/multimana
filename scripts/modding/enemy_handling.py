@@ -22,6 +22,10 @@ def create_health_widget_for_player(enemy: PyEnemyBase, player, player_index):
 
 
 class PyEnemyMultiplayerAdapter(ActorComponentBase):
+    """
+    This component is automatically added to an enemy and makes sure that the HP bar is shown for all players, not only
+    the first one.
+    """
     enemy: PyEnemyBase
 
     def __init__(self):
