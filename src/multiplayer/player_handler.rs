@@ -1,7 +1,10 @@
 use tracing::info;
 use manasdk::engine::{UGameplayStatics, UWorld};
 use manasdk::UObjectPointer;
+use manasdk::wbp_hud::UWBP_HUD_C;
 use manasdk::x21::{AACTPlayerController};
+use manasdk::x21_function_library::UPyX21FunctionLibrary;
+use manasdk::x21_hud::APyX21Hud;
 use crate::multiplayer::control_manager::{Claim, ControlManager};
 use crate::multiplayer::input_manager::InputManager;
 
@@ -48,6 +51,22 @@ impl PlayerHandler {
                         .or_else(|| UGameplayStatics::get_player_controller(world, self.player_id as i32).try_get().ok())
                         .and_then(|it| {
                             info!("Created {}", it.class_hierarchy());
+                            if let Some(hud) = it.my_hud.cast::<APyX21Hud>().and_then(|it| it.try_get().ok()) {
+                                hud.init_main_hud();
+                                if let Some(main_hud) = UPyX21FunctionLibrary::py_get_main_hud(hud).cast::<UWBP_HUD_C>().and_then(|hud| hud.try_get().ok()) {
+                                    info!("Got main HUD!");
+                                    // if let Some(minimap) = main_hud.wbp_minimap.as_ref() {
+                                    //     minimap.set_visibility(ESlateVisibility::Collapsed);
+                                    // }
+
+                                    // Update owner
+                                    main_hud.set_owning_player(it);
+
+                                    // Add to their screen
+                                    main_hud.remove_from_viewport();
+                                    main_hud.add_to_player_screen(0);
+                                }
+                            }
                             Some(it)
                         })
                         .and_then(|it| it.cast::<AACTPlayerController>())

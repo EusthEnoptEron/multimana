@@ -2,6 +2,9 @@ mod player_handler;
 mod control_manager;
 mod input_manager;
 
+use crate::multiplayer::control_manager::ControlManager;
+use crate::multiplayer::input_manager::InputManager;
+use crate::multiplayer::player_handler::PlayerHandler;
 use crate::utils::{EventHandler, Message, Mod, TrampolineWrapper};
 use anyhow::{anyhow, Context, Result};
 use libmem::Address;
@@ -9,17 +12,16 @@ use manasdk::core_u_object::UFunction;
 use manasdk::engine::{AActor, APawn, UEngine, UGameEngine, UGameViewportClient, UGameplayStatics, UWorld};
 use manasdk::engine_settings::{ETwoPlayerSplitScreenType, UGameMapsSettings};
 use manasdk::py_char_base::APyCharBase;
+use manasdk::py_empty_enemy::APyEmptyEnemyBase;
+use manasdk::py_enemy_base::APyEnemyBase;
 use manasdk::x21::{AActGameState, USakuraBlueprintFunctionLibrary, USakuraEventFunctionLibrary, USakuraEventStateFunctionLibrary};
+use manasdk::x21_game_mode::APyX21GameMode;
 use manasdk::x21_player_state::APyX21PlayerState;
 use manasdk::{EClassCastFlags, FFrame, FNativeFuncPtr, HasClassObject, TFixedSizeArray, UObject, UObjectPointer};
 use std::any::Any;
 use std::ffi::c_void;
 use std::sync::RwLock;
 use tracing::{error, info, instrument, warn};
-use manasdk::x21_game_mode::APyX21GameMode;
-use crate::multiplayer::control_manager::ControlManager;
-use crate::multiplayer::input_manager::InputManager;
-use crate::multiplayer::player_handler::PlayerHandler;
 
 #[derive(Default)]
 struct MultiplayerData {

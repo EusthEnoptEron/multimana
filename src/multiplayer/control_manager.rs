@@ -63,7 +63,7 @@ impl ControlManager {
                 settings.b_offset_player_gamepad_ids = false;
                 settings.two_player_splitscreen_layout = ETwoPlayerSplitScreenType::Vertical;
             }
-            
+
             for member in self.get_available_members() {
                 if let Some(camera_cmp) = member.camera_cmp.as_mut() {
                     camera_cmp.bit_set_b_constrain_aspect_ratio(false);
@@ -95,7 +95,7 @@ impl ControlManager {
     pub fn claim(&self, player_id: u8, player_controller: UObjectPointer<AACTPlayerController>) -> Option<Claim> {
         let mut state = self.state.write().ok()?;
 
-        if player_controller.as_ref().take_if(|it|!it.b_forbid_setting_rotation_from_pawn).is_none() {
+        if player_controller.as_ref().take_if(|it| !it.b_forbid_setting_rotation_from_pawn).is_none() {
             return None;
         }
 
@@ -210,7 +210,7 @@ impl ControlManager {
 
     fn ensure_evicted(&self, claim: &Claim, character: &APyCharBase) -> Option<()> {
         let mut ai_controller_ref = claim.ai_controller.clone();
-        let ai_controller = ai_controller_ref.as_mut().with_log_if_none("No AI controller found in claim!")?;
+        let ai_controller = ai_controller_ref.as_mut().take_if(|it| it.is_valid()).with_log_if_none("No AI controller found in claim!")?;
 
         self.transfer_control(character, ai_controller, |it| it.is_same(&claim.player_controller))
     }
@@ -227,7 +227,6 @@ impl ControlManager {
             let mut next_target_state_ref = next_target.player_state.clone();
 
             if let (Some(curr_target_state), Some(next_target_state)) = (curr_target_state_ref.clone().try_get().ok(), next_target_state_ref.clone().try_get().ok()) {
-
                 info!("Possessing character {} (is_bot={is_bot}) ({} -> {})", next_target.name.to_string().unwrap_or_default(),
                     curr_target_state.name().to_string(),
                     next_target_state.name().to_string()
@@ -241,7 +240,7 @@ impl ControlManager {
                 let other_controller = next_target.controller.clone();
                 target_controller.player_state = next_target_state_ref.clone();
                 target_controller.possess(next_target);
-                
+
                 if let Some(ctrl) = other_controller.clone().try_get().ok() {
                     ctrl.player_state = curr_target_state_ref.clone();
                     game_state.un_register_player(curr_target_state)
