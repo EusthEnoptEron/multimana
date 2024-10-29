@@ -40,7 +40,7 @@ fn main() {
     let definitions = generator::generate_code(
         "dump",
         &excluded_classes,
-        Some(Regex::new(r#"core_u_object|engine|x21|py_enemy_base"#).unwrap()),
+        Some(Regex::new(r#"core_u_object|engine|x21|py_enemy_base|wbp_hud"#).unwrap()),
     )
     .expect("Failed to generate code");
 

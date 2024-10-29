@@ -53,6 +53,11 @@ impl<T: AsRef<UObject>> UObjectPointer<T> {
     pub fn try_get<'a>(self) -> Result<&'a mut T, PointerError> {
         unsafe { self.0.as_mut() }.ok_or(PointerError::NullPointer)
     }
+    
+    pub fn cast<T2: HasClassObject + AsRef<UObject>>(&self) -> Option<UObjectPointer<T2>> {
+        let var = self.as_ref()?.as_ref();
+        var.cast().map(|it: &T2| it.into())
+    }
 
     pub fn name(&self) -> String {
         if let Some(obj) = self.as_ref() {
