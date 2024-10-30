@@ -17,7 +17,7 @@ def CommonUtils__GetLocalPCHud_override(world):
 CommonUtils.GetLocalPCHud = CommonUtils__GetLocalPCHud_override
 
 
-CommonUtils__GetLocalPLayerController = CommonUtils.GetLocalPlayerController
+CommonUtils__GetLocalPlayerController = CommonUtils.GetLocalPlayerController
 def GetLocalPlayerControllerOverride(world):
     try:
         if world.is_a(UserWidget):
@@ -30,6 +30,22 @@ def GetLocalPlayerControllerOverride(world):
     except Exception as e:
         ue.log_error(f"Error while getting local player controller: {e}")
 
-    return CommonUtils__GetLocalPLayerController(world)
+    return CommonUtils__GetLocalPlayerController(world)
 
 CommonUtils.GetLocalPlayerController = GetLocalPlayerControllerOverride
+
+
+CommonUtils__GetLocalControlledPawn = CommonUtils.GetLocalControlledPawn
+def GetLocalControlledPawnOverride(world):
+    try:
+        ctrl = CommonUtils.GetLocalPlayerController(world)
+        if ctrl is not None:
+            pawn = ctrl.Pawn
+            if pawn is not None:
+                return pawn
+    except Exception as e:
+        ue.log_error(f"Error while getting local player controller: {e}")
+
+    return CommonUtils__GetLocalControlledPawn(world)
+
+CommonUtils.GetLocalControlledPawn = GetLocalControlledPawnOverride
