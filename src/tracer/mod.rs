@@ -8,7 +8,7 @@ use libmem::Address;
 use std::any::Any;
 use std::ffi::c_void;
 use std::sync::OnceLock;
-use tracing::{info, instrument, trace_span};
+use tracing::{info, instrument, trace_span, Level};
 use tracing::field;
 use manasdk::{EPropertyFlags, FFrame, FNativeFuncPtr, FScriptName, UObject, UObjectPointer};
 use manasdk::core_u_object::{UFunction};
@@ -142,6 +142,11 @@ impl Mod for Tracer {
         ), skip_all)]
         fn ex_virtual_function(context: UObjectPointer<UObject>, stack: &FFrame, result: *mut c_void) {
             if let Some(trampoline) = VIRTUAL_FUNCTION_TRAMPOLINE.get() {
+                if !tracing::span_enabled!(target: "tracer", Level::TRACE) {
+                    trampoline.get()(context, stack, result);
+                    return
+                }
+                
                 log_function_call(context.as_ref().unwrap(), stack, result, trampoline.get(), false);
             }
         }
@@ -150,6 +155,11 @@ impl Mod for Tracer {
         ), skip_all)]
         fn ex_final_function(context: UObjectPointer<UObject>, stack: &FFrame, result: *mut c_void) {
             if let Some(trampoline) = FINAL_FUNCTION_TRAMPOLINE.get() {
+                if !tracing::span_enabled!(target: "tracer", Level::TRACE) {
+                    trampoline.get()(context, stack, result);
+                    return
+                }
+                
                 log_function_call(context.as_ref().unwrap(), stack, result, trampoline.get(), true);
             }
         }
@@ -158,6 +168,11 @@ impl Mod for Tracer {
         ), skip_all)]
         fn ex_local_virtual_function(context: UObjectPointer<UObject>, stack: &FFrame, result: *mut c_void) {
             if let Some(trampoline) = LOCAL_VIRTUAL_FUNCTION_TRAMPOLINE.get() {
+                if !tracing::span_enabled!(target: "tracer", Level::TRACE) {
+                    trampoline.get()(context, stack, result);
+                    return
+                }
+                
                 log_function_call(context.as_ref().unwrap(), stack, result, trampoline.get(), false);
             }
         }
@@ -166,6 +181,11 @@ impl Mod for Tracer {
         ), skip_all)]
         fn ex_local_final_function(context: UObjectPointer<UObject>, stack: &FFrame, result: *mut c_void) {
             if let Some(trampoline) = LOCAL_FINAL_FUNCTION_TRAMPOLINE.get() {
+                if !tracing::span_enabled!(target: "tracer", Level::TRACE) {
+                    trampoline.get()(context, stack, result);
+                    return
+                }
+                
                 log_function_call(context.as_ref().unwrap(), stack, result, trampoline.get(), true);
             }
         }
@@ -174,6 +194,11 @@ impl Mod for Tracer {
         ), skip_all)]
         fn ex_math(context: UObjectPointer<UObject>, stack: &FFrame, result: *mut c_void) {
             if let Some(trampoline) = MATH_TRAMPOLINE.get() {
+                if !tracing::span_enabled!(target: "tracer", Level::TRACE) {
+                    trampoline.get()(context, stack, result);
+                    return
+                }
+                
                 log_function_call(context.as_ref().unwrap(), stack, result, trampoline.get(), true);
             }
         }

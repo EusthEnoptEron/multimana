@@ -1,4 +1,5 @@
 use std::ffi::c_void;
+use tracing::info;
 use manasdk::{EPropertyFlags, FFrame, UObject};
 use manasdk::core_u_object::UFunction;
 use crate::tracer::{EX_END_FUNCTION_PARAMS, GNATIVES};
@@ -10,6 +11,8 @@ pub fn get_params(
     context: &UObject,
     stack: &FFrame,
 ) -> Option<String> {
+    
+    info!("UI!!");
     let mut params = String::new();
     let mut new_stack = stack.clone();
 
